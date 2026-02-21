@@ -1,0 +1,44 @@
+.stat-card {
+  width: 100%;
+  height: 100%;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+
+.value {
+  font-size: 2.1rem;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sub-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.delta {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.panel-state {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.panel-state.error {
+  color: var(--danger);
+}

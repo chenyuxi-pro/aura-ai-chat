@@ -1,0 +1,209 @@
+/* ── Confirmation Bubble ────────────────────────────────────────── */
+
+:host {
+    display: block;
+    font-family: var(--aura-font-family, 'DM Sans', sans-serif);
+    font-size: var(--aura-font-size-base, 14px);
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.confirmation-bubble {
+    padding: 16px;
+    border-radius: var(--aura-radius-bubble, 16px);
+    background: var(--aura-color-ai-bubble, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--aura-color-border, #3e3e42);
+    border-bottom-left-radius: 6px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Summary ──────────────────────────────────────────────────── */
+
+.summary {
+    margin: 0 0 10px;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+/* ── Risk Badge ───────────────────────────────────────────────── */
+
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.risk-badge.moderate {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.risk-badge.destructive {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ── Preview Container ────────────────────────────────────────── */
+
+.preview-container {
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--aura-color-border, #3e3e42);
+    background: rgba(0, 0, 0, 0.12);
+    min-height: 40px;
+    position: relative;
+}
+
+.preview-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--aura-color-text-muted, #6b7280);
+    margin: 0 0 8px;
+}
+
+.preview-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--aura-color-text-muted, #6b7280);
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+.preview-loading .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--aura-color-border, #3e3e42);
+    border-top-color: var(--aura-color-primary, #7c6af7);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Destructive Confirm Input ────────────────────────────────── */
+
+.confirm-section {
+    margin: 12px 0;
+}
+
+.confirm-label {
+    font-size: 13px;
+    color: var(--aura-color-text-muted, #6b7280);
+    margin: 0 0 6px;
+}
+
+.confirm-input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--aura-color-border, #3e3e42);
+    background: var(--aura-color-input-bg, rgba(255, 255, 255, 0.06));
+    color: var(--aura-color-text, #e2e4ed);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+
+.confirm-input:focus {
+    border-color: var(--aura-color-primary, #7c6af7);
+    background: var(--aura-color-input-bg-focus, rgba(255, 255, 255, 0.08));
+}
+
+/* ── Action Buttons ───────────────────────────────────────────── */
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.btn-cancel {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--aura-color-text-muted, #6b7280);
+    border: 1px solid var(--aura-color-border, #3e3e42);
+}
+
+.btn-cancel:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.btn-approve {
+    background: var(--aura-color-primary, #7c6af7);
+    color: var(--aura-color-primary-fg, #fff);
+}
+
+.btn-approve:not(:disabled):hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.btn-approve:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+/* ── Outcome Label ────────────────────────────────────────────── */
+
+.outcome {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.outcome.approved {
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.outcome.cancelled {
+    background: rgba(239, 68, 68, 0.08);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}

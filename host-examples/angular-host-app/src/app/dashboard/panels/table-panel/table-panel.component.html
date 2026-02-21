@@ -1,0 +1,16 @@
+<div class="table-panel">
+  @if (panel.loading) {
+    <div class="panel-state">Loading table data...</div>
+  } @else if (panel.error) {
+    <div class="panel-state error">{{ panel.error }}</div>
+  } @else {
+    <div class="ag-theme-quartz table-grid">
+      <ag-grid-angular
+        [rowData]="rowData"
+        [columnDefs]="columnDefs"
+        [defaultColDef]="defaultColDef"
+        [animateRows]="true"
+      />
+    </div>
+  }
+</div>

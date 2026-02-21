@@ -1,0 +1,16 @@
+<div class="stat-card">
+  @if (panel.loading) {
+    <div class="panel-state">Loading KPI...</div>
+  } @else if (panel.error) {
+    <div class="panel-state error">{{ panel.error }}</div>
+  } @else {
+    <div class="label">{{ panel.data?.stat?.label ?? panel.title }}</div>
+    <div class="value">{{ panel.data?.stat?.value ?? '--' }}</div>
+    @if (panel.data?.stat?.subLabel) {
+      <div class="sub-label">{{ panel.data?.stat?.subLabel }}</div>
+    }
+    @if (panel.data?.stat?.delta) {
+      <div class="delta">{{ panel.data?.stat?.delta }}</div>
+    }
+  }
+</div>

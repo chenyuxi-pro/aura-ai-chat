@@ -1,0 +1,9 @@
+<div class="chart-panel">
+  @if (panel.loading) {
+    <div class="panel-state">Loading chart data...</div>
+  } @else if (panel.error) {
+    <div class="panel-state error">{{ panel.error }}</div>
+  } @else {
+    <div echarts [options]="chartOptions" class="chart-host"></div>
+  }
+</div>
