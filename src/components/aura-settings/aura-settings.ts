@@ -160,9 +160,6 @@ export class AuraSettings extends LitElement {
            ` : nothing}
            ${isCopilot ? html`
              <div class="field" style="padding-left: 24px;">
-               <div class="field-label" style="color: var(--aura-color-text-muted); font-size: 12px; margin-bottom: 8px;">
-                 🐙 Sign in from the chat area
-               </div>
                <div class="check-item">
                  <input type="checkbox" .checked=${p.rememberToken !== false}
                    @change=${(e: Event) => this._setDraft(`providers.${i}.rememberToken`, (e.target as HTMLInputElement).checked)} />

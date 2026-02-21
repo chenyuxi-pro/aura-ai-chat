@@ -98,7 +98,7 @@
 }
 
 .conversation-item.active {
-    background: rgba(124, 106, 247, 0.12);
+    background: rgba(var(--aura-color-primary-rgb, 124, 106, 247), 0.12);
     color: var(--aura-color-primary, #7c6af7);
 }
 

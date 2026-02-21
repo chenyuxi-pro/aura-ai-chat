@@ -3,6 +3,7 @@
  * ────────────────────────────────────────────────────────────────── */
 
 import { LitElement, html, unsafeCSS } from 'lit';
+import type { PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type {
     AuraConfig,
@@ -23,6 +24,7 @@ import { AnthropicProvider } from '../../providers/anthropic-provider.js';
 import { OllamaProvider } from '../../providers/ollama-provider.js';
 import { GitHubCopilotProvider } from '../../providers/github-copilot-provider.js';
 import type { CopilotLoginState } from '../aura-messages/aura-messages.js';
+import type { AuraSettings } from '../aura-settings/aura-settings.js';
 import styles from './aura-chat.css?inline';
 
 // Import child components
@@ -96,20 +98,88 @@ export class AuraChat extends LitElement {
 
     private _providers: Map<string, AIProvider> = new Map();
     private _providerOptions: ProviderOption[] = [];
+    private _settingsDialog?: AuraSettings;
     private _unsubscribe?: () => void;
     private _copilotUnsub?: () => void;
+    private readonly _settingsThemeVars = [
+        '--aura-font-family',
+        '--aura-color-bg',
+        '--aura-color-border',
+        '--aura-color-text',
+        '--aura-color-text-muted',
+        '--aura-color-input-bg',
+        '--aura-color-input-bg-focus',
+        '--aura-color-primary',
+        '--aura-color-primary-fg',
+    ] as const;
+    private readonly _handleSettingsClose = () => { this._settingsOpen = false; };
+    private readonly _handleSettingsApply = (event: Event) => this._onApplySettings(event as CustomEvent<{ draft: Record<string, unknown> }>);
+    private readonly _handleSettingsToggleSkill = (event: Event) => this._onToggleSkill(event as CustomEvent<{ name: string; enabled: boolean }>);
+    private readonly _handleSettingsToggleTool = (event: Event) => this._onToggleTool(event as CustomEvent<{ name: string; enabled: boolean }>);
 
     // ── Lifecycle ───────────────────────────────────────────────
 
     override connectedCallback() {
         super.connectedCallback();
         this._applySystemTheme();
+        this._ensureSettingsDialog();
+        this._syncSettingsDialog();
         window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => this._applySystemTheme());
     }
 
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribe?.();
+        this._copilotUnsub?.();
+        this._teardownSettingsDialog();
+    }
+
+    override updated(_changed: PropertyValues<this>) {
+        this._syncSettingsDialog();
+    }
+
+    private _ensureSettingsDialog() {
+        if (this._settingsDialog || !this.isConnected) return;
+
+        const dialog = document.createElement('aura-settings') as AuraSettings;
+        dialog.addEventListener('close-settings', this._handleSettingsClose as EventListener);
+        dialog.addEventListener('apply-settings', this._handleSettingsApply as EventListener);
+        dialog.addEventListener('toggle-skill', this._handleSettingsToggleSkill as EventListener);
+        dialog.addEventListener('toggle-tool', this._handleSettingsToggleTool as EventListener);
+        document.body.appendChild(dialog);
+        this._settingsDialog = dialog;
+    }
+
+    private _teardownSettingsDialog() {
+        if (!this._settingsDialog) return;
+
+        this._settingsDialog.removeEventListener('close-settings', this._handleSettingsClose as EventListener);
+        this._settingsDialog.removeEventListener('apply-settings', this._handleSettingsApply as EventListener);
+        this._settingsDialog.removeEventListener('toggle-skill', this._handleSettingsToggleSkill as EventListener);
+        this._settingsDialog.removeEventListener('toggle-tool', this._handleSettingsToggleTool as EventListener);
+        this._settingsDialog.remove();
+        this._settingsDialog = undefined;
+    }
+
+    private _syncSettingsDialog() {
+        this._ensureSettingsDialog();
+        if (!this._settingsDialog) return;
+
+        this._settingsDialog.open = this._settingsOpen;
+        this._settingsDialog.config = this._config;
+
+        const theme = this.getAttribute('data-theme') || this._resolvedTheme;
+        this._settingsDialog.setAttribute('data-theme', theme);
+
+        const computed = getComputedStyle(this);
+        for (const varName of this._settingsThemeVars) {
+            const value = computed.getPropertyValue(varName).trim();
+            if (value) {
+                this._settingsDialog.style.setProperty(varName, value);
+            } else {
+                this._settingsDialog.style.removeProperty(varName);
+            }
+        }
     }
 
     private async _initFromConfig(config: AuraConfig) {
@@ -167,7 +237,7 @@ export class AuraChat extends LitElement {
         if (!provider) return;
         try {
             this._models = await provider.getAvailableModels();
-            
+
             // If current model is not in the list, or no model is selected, pick the first available
             if (this._models.length > 0) {
                 const isValid = this._models.some(m => m.id === this._activeModel);
@@ -228,6 +298,7 @@ export class AuraChat extends LitElement {
         .streaming=${this._isStreaming}
         .streamingContent=${this._streamingContent}
         .aiName=${this._config.identity.aiName}
+        .aiIcon=${this._providerOptions.find(p => p.id === this._activeProviderId)?.icon || ''}
         .welcomeTitle=${this._config.welcome.title}
         .welcomeMessage=${this._config.welcome.message}
         .welcomeIcon=${this._config.welcome.icon || ''}
@@ -250,15 +321,6 @@ export class AuraChat extends LitElement {
         @model-change=${this._onModelChange}
         @resize-input=${this._onResizeInput}
       ></aura-input>
-
-      <aura-settings
-        .open=${this._settingsOpen}
-        .config=${this._config}
-        @close-settings=${() => this._settingsOpen = false}
-        @apply-settings=${this._onApplySettings}
-        @toggle-skill=${this._onToggleSkill}
-        @toggle-tool=${this._onToggleTool}
-      ></aura-settings>
 
       <aura-history
         .open=${this._historyOpen}

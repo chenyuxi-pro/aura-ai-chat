@@ -45,7 +45,7 @@ type StatusChangeCallback = (status: CopilotLoginStatus, info?: DeviceFlowInfo) 
 export class GitHubCopilotProvider implements AIProvider {
     readonly id = 'github-copilot';
     readonly name = 'GitHub Copilot';
-    readonly icon = '🐙';
+    readonly icon = 'terminal';
 
     private _accessToken: string | null = null;
     private _copilotToken: string | null = null;

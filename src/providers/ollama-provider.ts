@@ -8,7 +8,7 @@ import { BaseProvider } from './base-provider.js';
 export class OllamaProvider extends BaseProvider {
     readonly id = 'ollama';
     readonly name = 'Ollama';
-    readonly icon = '🦙';
+    readonly icon = 'smart_toy';
 
     constructor(config: BuiltInProviderConfig) {
         super(config, 'http://localhost:11434');

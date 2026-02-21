@@ -8,7 +8,7 @@ import { BaseProvider } from './base-provider.js';
 export class OpenAIProvider extends BaseProvider {
     readonly id = 'openai';
     readonly name = 'OpenAI';
-    readonly icon = '🤖';
+    readonly icon = 'auto_awesome';
 
     constructor(config: BuiltInProviderConfig) {
         super(config, 'https://api.openai.com/v1');

@@ -26,7 +26,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--aura-color-primary, #7c6af7) 0%, #9f8aff 100%);
+    background: linear-gradient(135deg, var(--aura-color-primary, #7c6af7) 0%, var(--aura-color-blue-80, #9f8aff) 100%);
     color: #fff;
     font-size: 14px;
     font-weight: 600;
@@ -70,8 +70,8 @@
 }
 
 .header-btn:hover {
-    background: rgba(124, 106, 247, 0.1);
-    color: var(--aura-color-text, #e2e4ed);
+    background: rgba(var(--aura-color-primary-rgb, 124, 106, 247), 0.1);
+    color: var(--aura-color-primary, #7c6af7);
 }
 
 .header-btn:active {

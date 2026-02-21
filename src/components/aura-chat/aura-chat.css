@@ -8,8 +8,8 @@
     width: 100%;
     height: 100%;
     background: var(--aura-color-bg, #1e1e1e);
-    border-radius: var(--aura-radius-widget, 12px);
-    box-shadow: var(--aura-shadow, 0 8px 32px rgba(0, 0, 0, 0.4));
+    border: 1px solid var(--aura-color-border, #3e3e42);
+    box-shadow: var(--aura-shadow);
     overflow: hidden;
     position: relative;
     font-family: var(--aura-font-family, 'DM Sans', sans-serif);

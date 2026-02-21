@@ -8,7 +8,7 @@ import { BaseProvider } from './base-provider.js';
 export class AnthropicProvider extends BaseProvider {
     readonly id = 'anthropic';
     readonly name = 'Anthropic';
-    readonly icon = '🧠';
+    readonly icon = 'psychology';
 
     constructor(config: BuiltInProviderConfig) {
         super(config, 'https://api.anthropic.com/v1');
@@ -25,10 +25,10 @@ export class AnthropicProvider extends BaseProvider {
 
     async getAvailableModels(): Promise<AIModel[]> {
         return [
-            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-            { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-            { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', icon: 'graph_5' },
+            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', icon: 'graph_5' },
+            { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', icon: 'graph_5' },
+            { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', icon: 'graph_5' },
         ];
     }
 

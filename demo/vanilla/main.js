@@ -279,7 +279,6 @@ function buildSettingsUI() {
                                 <input type="checkbox" data-key="providers.${i}.rememberToken" ${p.rememberToken !== false ? 'checked' : ''} />
                                 <span>Remember access token</span>
                             </div>
-                            <div style="font-size: 11px; color: var(--demo-text-muted); margin-top: 4px;">🐙 Sign in from the chat area</div>
                         </div>`;
                     } else {
                         html += `<div class="field">

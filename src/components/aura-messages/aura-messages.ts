@@ -29,6 +29,7 @@ export class AuraMessages extends LitElement {
   @property() welcomeIcon = '';
   @property({ type: Array }) suggestedPrompts: SuggestedPrompt[] = [];
   @state() private _rememberToken = true;
+  @property() aiIcon = '';
   @property({ type: Object }) copilotLogin: CopilotLoginState | null = null;
 
   override updated(changedProps: Map<string, unknown>) {
@@ -162,7 +163,13 @@ export class AuraMessages extends LitElement {
     const isError = msg.role === 'error';
     const roleClass = isError ? 'assistant error' : msg.role;
     const avatarClass = isUser ? 'user-avatar' : isError ? 'error-avatar' : 'ai';
-    const avatarContent = isUser ? '👤' : isError ? '⚠' : this.aiName.charAt(0).toUpperCase();
+    const avatarContent = isUser
+      ? '👤'
+      : isError
+        ? '⚠'
+        : this.aiIcon
+          ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
+          : this.aiName.charAt(0).toUpperCase();
     return html`
       <div class="message ${roleClass}">
         <div class="avatar ${avatarClass}">
@@ -176,9 +183,12 @@ export class AuraMessages extends LitElement {
   }
 
   private _renderStreamingMessage() {
+    const avatarContent = this.aiIcon
+      ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
+      : this.aiName.charAt(0).toUpperCase();
     return html`
       <div class="message assistant">
-        <div class="avatar ai">${this.aiName.charAt(0).toUpperCase()}</div>
+        <div class="avatar ai">${avatarContent}</div>
         <div class="bubble">
           ${this.streamingContent
         ? unsafeHTML(this._renderMarkdown(this.streamingContent))
