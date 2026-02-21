@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────────────
- *  aura-widget — Shared TypeScript Types
+ *  aura-ai-chat — Shared TypeScript Types
  *  All types exported from the library's public API surface.
  * ────────────────────────────────────────────────────────────────── */
 

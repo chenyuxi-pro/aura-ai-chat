@@ -6,7 +6,7 @@ export default defineConfig({
         lib: {
             entry: resolve(__dirname, 'src/index.ts'),
             formats: ['es'],
-            fileName: 'aura-widget',
+            fileName: 'aura-ai-chat',
         },
         rollupOptions: {
             external: ['lit', 'marked', 'dompurify'],

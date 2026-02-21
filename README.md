@@ -1,4 +1,4 @@
-# ✦ Aura Widget
+# ✦ Aura AI Chat
 
 A **production-grade, framework-agnostic AI chat widget** built as a Web Component library with [Lit 3.x](https://lit.dev/). Drop `<aura-chat>` into any application — vanilla JS, React, Angular, Vue — and get a fully featured AI assistant with streaming, skills, tools, conversation history, and theming out of the box.
 
@@ -28,14 +28,14 @@ A **production-grade, framework-agnostic AI chat widget** built as a Web Compone
 ### Install
 
 ```bash
-npm install aura-widget
+npm install aura-ai-chat
 ```
 
 ### Basic Usage
 
 ```html
 <script type="module">
-  import 'aura-widget';
+  import 'aura-ai-chat';
 </script>
 
 <aura-chat id="chat"></aura-chat>
@@ -160,7 +160,7 @@ providers: [
 Implement the `AIProvider` interface and pass it as a `custom` provider:
 
 ```typescript
-import type { AIProvider, AIModel, AIRequest, AIStreamChunk } from 'aura-widget';
+import type { AIProvider, AIModel, AIRequest, AIStreamChunk } from 'aura-ai-chat';
 
 class MyProvider implements AIProvider {
   readonly id = 'my-provider';
@@ -423,7 +423,7 @@ graph TD
 ```bash
 npm install
 npm run dev       # Vite dev server with HMR
-npm run build     # Production build → dist/aura-widget.js
+npm run build     # Production build → dist/aura-ai-chat.js
 npx tsc --noEmit  # Type-check without emit
 ```
 

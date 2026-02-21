@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────────────
- *  aura-widget — Library Entry Point
+ *  aura-ai-chat — Library Entry Point
  *  Exports all public types and the <aura-chat> custom element.
  * ────────────────────────────────────────────────────────────────── */
 

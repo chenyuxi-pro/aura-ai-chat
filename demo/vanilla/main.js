@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────────────
- *  Aura Widget — Vanilla Demo (main.js)
+ *  Aura AI Chat — Vanilla Demo (main.js)
  *  Three-panel config playground with settings sidebar + event log.
  * ────────────────────────────────────────────────────────────────── */
 

@@ -10,7 +10,7 @@ import type {
     BuiltInProviderConfig,
 } from '../types/index.js';
 
-const LS_PREFIX = 'aura-widget:';
+const LS_PREFIX = 'aura-ai-chat:';
 
 export abstract class BaseProvider implements AIProvider {
     abstract readonly id: string;

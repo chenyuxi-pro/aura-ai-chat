@@ -1,14 +1,14 @@
 {
-  "name": "aura-widget",
+  "name": "aura-ai-chat",
   "version": "1.0.0",
   "description": "Production-grade, framework-agnostic AI chat widget built as a Web Component library",
   "type": "module",
-  "main": "dist/aura-widget.es.js",
-  "module": "dist/aura-widget.es.js",
+  "main": "dist/aura-ai-chat.es.js",
+  "module": "dist/aura-ai-chat.es.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/aura-widget.es.js",
+      "import": "./dist/aura-ai-chat.es.js",
       "types": "./dist/index.d.ts"
     }
   },

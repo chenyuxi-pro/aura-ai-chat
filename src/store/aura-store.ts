@@ -13,7 +13,7 @@ import type {
     BuiltInProviderConfig,
 } from '../types/index.js';
 
-const LS_PREFIX = 'aura-widget:';
+const LS_PREFIX = 'aura-ai-chat:';
 
 function lsGet(key: string): string | null {
     try {

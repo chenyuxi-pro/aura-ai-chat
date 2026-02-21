@@ -22,7 +22,7 @@ const EDITOR_VERSION = 'vscode/1.93.1';
 const EDITOR_PLUGIN_VERSION = 'copilot/1.155.0';
 const USER_AGENT = 'GithubCopilot/1.155.0';
 
-const LS_PREFIX = 'aura-widget:';
+const LS_PREFIX = 'aura-ai-chat:';
 const TOKEN_REFRESH_BUFFER_MS = 10_000; // refresh 10s before expiry
 
 // ── Types ──────────────────────────────────────────────────────────
