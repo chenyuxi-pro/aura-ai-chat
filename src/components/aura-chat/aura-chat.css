@@ -1,0 +1,50 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: var(--aura-color-bg, #1e1e1e);
+    border-radius: var(--aura-radius-widget, 12px);
+    box-shadow: var(--aura-shadow, 0 8px 32px rgba(0, 0, 0, 0.4));
+    overflow: hidden;
+    position: relative;
+    font-family: var(--aura-font-family, 'DM Sans', sans-serif);
+    color: var(--aura-color-text, #cccccc);
+    font-size: var(--aura-font-size-base, 14px);
+    box-sizing: border-box;
+    isolation: isolate;
+}
+
+/* ── Theme: light ──────────────────────────────────────── */
+
+:host([data-theme="light"]) {
+    --aura-color-bg: #ffffff;
+    --aura-color-surface: #f8f9fb;
+    --aura-color-border: #eef1f5;
+    --aura-color-text: #1a1d27;
+    --aura-color-text-muted: #717684;
+    --aura-color-primary: #6350e9;
+    --aura-color-user-bubble: #eef1f5;
+    --aura-color-ai-bubble: #ffffff;
+    --aura-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    --aura-color-input-bg: rgba(0, 0, 0, 0.03);
+    --aura-color-input-bg-focus: rgba(0, 0, 0, 0.05);
+}
+
+:host([data-theme="dark"]) {
+    --aura-color-bg: #1e1e1e;
+    --aura-color-surface: #252526;
+    --aura-color-border: #3e3e42;
+    --aura-color-text: #cccccc;
+    --aura-color-text-muted: #858585;
+    --aura-color-primary: #7c6af7;
+    --aura-color-user-bubble: rgba(124, 106, 247, 0.12);
+    --aura-color-ai-bubble: rgba(255, 255, 255, 0.04);
+    --aura-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --aura-color-input-bg: rgba(255, 255, 255, 0.06);
+    --aura-color-input-bg-focus: rgba(255, 255, 255, 0.1);
+}
+
+* {
+    box-sizing: border-box;
+}

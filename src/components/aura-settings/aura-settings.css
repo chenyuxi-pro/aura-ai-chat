@@ -1,0 +1,311 @@
+:host {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    font-family: var(--aura-font-family, 'DM Sans', sans-serif);
+}
+
+:host([open]) {
+    display: flex;
+}
+
+.overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+}
+
+.panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% - 40px);
+    max-width: 520px;
+    max-height: calc(100% - 40px);
+    background: var(--aura-color-bg, #0f1117);
+    border: 1px solid var(--aura-color-border, #2a2d3a);
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: panelIn 0.2s ease;
+}
+
+@keyframes panelIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--aura-color-border, #2a2d3a);
+}
+
+.panel-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--aura-color-text-muted, #6b7280);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 16px;
+}
+
+.close-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 20px;
+}
+
+.panel-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-top: 1px solid var(--aura-color-border, #2a2d3a);
+}
+
+.managed-notice {
+    font-size: 12px;
+    color: var(--aura-color-text-muted, #6b7280);
+    font-style: italic;
+}
+
+.footer-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.btn {
+    padding: 7px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--aura-color-text-muted, #6b7280);
+    border: 1px solid var(--aura-color-border, #2a2d3a);
+}
+
+.btn-secondary:hover {
+    background: var(--aura-color-input-bg, rgba(255, 255, 255, 0.04));
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.btn-primary {
+    background: var(--aura-color-primary, #7c6af7);
+    color: var(--aura-color-primary-fg, #ffffff);
+}
+
+.btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+/* ── Groups ────────────────────────────────────────────── */
+
+.group {
+    border: 1px solid var(--aura-color-border, #2a2d3a);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--aura-color-input-bg, rgba(255, 255, 255, 0.02));
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s;
+}
+
+.group-header:hover {
+    background: var(--aura-color-input-bg-focus, rgba(255, 255, 255, 0.04));
+}
+
+.group-chevron {
+    font-size: 10px;
+    color: var(--aura-color-text-muted, #6b7280);
+    transition: transform 0.15s;
+}
+
+.group-chevron.open {
+    transform: rotate(90deg);
+}
+
+.group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.group-body {
+    padding: 10px 14px 14px;
+    display: none;
+}
+
+.group-body.open {
+    display: block;
+}
+
+/* ── Fields ────────────────────────────────────────────── */
+
+.field {
+    margin-bottom: 10px;
+}
+
+.field:last-child {
+    margin-bottom: 0;
+}
+
+.field-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--aura-color-text-muted, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--aura-color-border, #2a2d3a);
+    border-radius: 6px;
+    background: var(--aura-color-input-bg, rgba(0, 0, 0, 0.2));
+    color: var(--aura-color-text, #e2e4ed);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+
+.field input:focus,
+.field textarea:focus {
+    border-color: var(--aura-color-primary, #7c6af7);
+}
+
+.field textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.field input:read-only,
+.field textarea:read-only {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Checkbox list ─────────────────────────────────────── */
+
+.check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--aura-color-text, #e2e4ed);
+}
+
+.check-item input[type="checkbox"] {
+    accent-color: var(--aura-color-primary, #7c6af7);
+    width: 15px;
+    height: 15px;
+}
+
+.check-item .locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.check-item .lock-icon {
+    font-size: 11px;
+    color: var(--aura-color-text-muted, #6b7280);
+}
+
+.check-sub {
+    padding-left: 24px;
+}
+
+.expand-controls {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+}
+
+.expand-controls button {
+    background: none;
+    border: none;
+    color: var(--aura-color-primary, #7c6af7);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    font-family: inherit;
+}
+
+.expand-controls button:hover {
+    text-decoration: underline;
+}
+
+/* ── Range / Slider ────────────────────────────────────── */
+
+.range-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.range-wrapper input[type="range"] {
+    flex: 1;
+    accent-color: var(--aura-color-primary, #7c6af7);
+}
+
+.range-value {
+    font-size: 12px;
+    color: var(--aura-color-text-muted, #6b7280);
+    min-width: 32px;
+    text-align: right;
+}
