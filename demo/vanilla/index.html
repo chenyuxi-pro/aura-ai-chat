@@ -74,7 +74,32 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            resize: horizontal;
+        }
+
+        /* ── Drag Handles ────────────────────────────────────── */
+
+        .drag-handle {
+            width: 4px;
+            background: transparent;
+            cursor: col-resize;
+            transition: background 0.2s;
+            z-index: 10;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .drag-handle:hover,
+        .drag-handle.active {
+            background: var(--demo-primary);
+        }
+
+        .drag-handle::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: -2px;
+            right: -2px;
         }
 
         .sidebar-header {
@@ -376,14 +401,7 @@
             border-left: 1px solid var(--demo-border);
             display: flex;
             flex-direction: column;
-            resize: horizontal;
-            direction: rtl;
-            /* makes the resize handle appear on the left side */
             overflow: hidden;
-        }
-
-        .sidebar-right>* {
-            direction: ltr;
         }
 
         .sidebar-right.hidden {
@@ -506,7 +524,7 @@
 <body class="light">
     <div class="demo-layout">
         <!-- ═══ LEFT SIDEBAR ═══ -->
-        <div class="sidebar-left">
+        <div class="sidebar-left" id="sidebarLeft">
             <div class="sidebar-header">
                 <div class="sidebar-title">
                     ✦ Aura AI Chat <span class="sidebar-version">v1.0.0</span>
@@ -532,12 +550,16 @@
             </div>
         </div>
 
+        <div class="drag-handle" id="dragLeft"></div>
+
         <!-- ═══ CENTER ═══ -->
         <div class="center-panel">
             <div class="widget-container full" id="widgetContainer">
                 <aura-chat id="widget"></aura-chat>
             </div>
         </div>
+
+        <div class="drag-handle" id="dragRight"></div>
 
         <!-- ═══ RIGHT SIDEBAR (Event Log) ═══ -->
         <div class="sidebar-right" id="eventLogPanel">

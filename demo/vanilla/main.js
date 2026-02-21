@@ -496,6 +496,57 @@ toggleFull.addEventListener('click', () => {
 toggleLog.addEventListener('click', () => {
     toggleLog.classList.toggle('active');
     eventLogPanel.classList.toggle('hidden');
+    document.getElementById('dragRight').style.display = eventLogPanel.classList.contains('hidden') ? 'none' : 'block';
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Resizing logic
+// ═══════════════════════════════════════════════════════════════════
+
+const dragLeft = document.getElementById('dragLeft');
+const dragRight = document.getElementById('dragRight');
+const sidebarLeft = document.getElementById('sidebarLeft');
+
+let isResizingLeft = false;
+let isResizingRight = false;
+
+dragLeft.addEventListener('mousedown', (e) => {
+    isResizingLeft = true;
+    dragLeft.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+});
+
+dragRight.addEventListener('mousedown', (e) => {
+    isResizingRight = true;
+    dragRight.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (isResizingLeft) {
+        const newWidth = e.clientX;
+        if (newWidth >= 260 && newWidth <= 500) {
+            sidebarLeft.style.width = `${newWidth}px`;
+        }
+    }
+
+    if (isResizingRight) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 220 && newWidth <= 500) {
+            eventLogPanel.style.width = `${newWidth}px`;
+        }
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    isResizingLeft = false;
+    isResizingRight = false;
+    dragLeft.classList.remove('active');
+    dragRight.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
 });
 
 // ═══════════════════════════════════════════════════════════════════
