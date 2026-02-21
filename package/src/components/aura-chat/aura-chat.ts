@@ -131,14 +131,15 @@ export class AuraChat extends LitElement {
     private readonly _handleSettingsToggleTool = (event: Event) => this._onToggleTool(event as CustomEvent<{ name: string; enabled: boolean }>);
 
     // ── Lifecycle ───────────────────────────────────────────────
-
     override connectedCallback() {
         super.connectedCallback();
+        this._injectMaterialSymbolsFont();
         this._applySystemTheme();
         this._ensureSettingsDialog();
         this._syncSettingsDialog();
         window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => this._applySystemTheme());
     }
+
 
     override disconnectedCallback() {
         super.disconnectedCallback();
@@ -149,6 +150,17 @@ export class AuraChat extends LitElement {
 
     override updated(_changed: PropertyValues<this>) {
         this._syncSettingsDialog();
+    }
+
+    private _injectMaterialSymbolsFont() {
+        const id = 'material-symbols-font';
+        if (document.getElementById(id)) return;  // already loaded
+
+        const link = document.createElement('link');
+        link.id = id;
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200';
+        document.head.appendChild(link);
     }
 
     private _ensureSettingsDialog() {

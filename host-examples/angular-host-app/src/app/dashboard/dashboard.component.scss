@@ -231,19 +231,9 @@
   flex-direction: column;
 }
 
-.assistant-header {
-  height: 56px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .assistant-widget {
   width: 100%;
-  height: calc(100% - 56px);
+  height: 100%;
 }
 
 @media (max-width: 900px) {

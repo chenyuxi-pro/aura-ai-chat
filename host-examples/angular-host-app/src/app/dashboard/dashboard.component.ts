@@ -10,6 +10,7 @@ import {
   effect,
   inject,
   signal,
+  runInInjectionContext,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { AuraConfig } from 'aura-ai-chat';
@@ -93,13 +94,15 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     this.injectConfig();
 
-    this.stopConfigEffect = effect(() => {
-      this.dashboardService.panels();
-      this.themeService.preference();
-      this.themeService.resolvedTheme();
-      this.dashboardService.panelCount();
+    runInInjectionContext(this.injector, () => {
+      this.stopConfigEffect = effect(() => {
+        this.dashboardService.panels();
+        this.themeService.preference();
+        this.themeService.resolvedTheme();
+        this.dashboardService.panelCount();
 
-      this.injectConfig();
+        this.injectConfig();
+      });
     });
   }
 

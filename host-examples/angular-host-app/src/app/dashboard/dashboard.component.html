@@ -92,11 +92,6 @@
       [visible]="!dashboardService.sidebarCollapsed()"
     >
       <aside class="assistant-sidebar">
-        <div class="assistant-header">
-          <strong>Dashboard Assistant</strong>
-          <button class="action-button" (click)="toggleChatSidebar()">Collapse</button>
-        </div>
-
         <aura-chat #chatWidget class="assistant-widget"></aura-chat>
       </aside>
     </as-split-area>
