@@ -1,0 +1,13 @@
+:host([data-theme="professional-light"]) {
+    --aura-color-bg: #ffffff;
+    --aura-color-surface: #f4f7fa;
+    --aura-color-border: #dae1e7;
+    --aura-color-text: #2c3e50;
+    --aura-color-text-muted: #7f8c8d;
+    --aura-color-primary: #187ABA;
+    --aura-color-user-bubble: #ebf5fb;
+    --aura-color-ai-bubble: #ffffff;
+    --aura-shadow: 0 4px 20px rgba(24, 122, 186, 0.1);
+    --aura-color-input-bg: #f8f9f9;
+    --aura-color-input-bg-focus: #ffffff;
+}

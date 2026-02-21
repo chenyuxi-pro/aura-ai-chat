@@ -234,8 +234,10 @@ export interface SettingsControl {
     visibility?: SettingsRule;
 }
 
+export type AuraTheme = 'light' | 'dark' | 'professional-light' | 'auto' | (string & {});
+
 export interface UIConfig {
-    theme?: 'light' | 'dark' | 'auto';
+    theme?: AuraTheme;
     customComponents?: CustomMessageComponent[];
     settings?: SettingsControl;
 }

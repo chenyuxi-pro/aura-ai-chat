@@ -12,6 +12,7 @@ import type {
     AIProviderConfig,
     BuiltInProviderConfig,
     ConversationMeta,
+    AuraTheme,
 } from '../../types/index.js';
 import { store } from '../../store/aura-store.js';
 import { promptBuilder } from '../../prompt/prompt-builder.js';
@@ -90,7 +91,7 @@ export class AuraChat extends LitElement {
     @state() private _activeModel = '';
     @state() private _activeProviderId = '';
     @state() private _inputHeight = 120;
-    @state() private _resolvedTheme: 'light' | 'dark' = 'dark';
+    @state() private _resolvedTheme: string = 'dark';
     @state() private _copilotLoginState: CopilotLoginState | null = null;
 
     private _providers: Map<string, AIProvider> = new Map();
@@ -189,7 +190,7 @@ export class AuraChat extends LitElement {
         }
     }
 
-    private _applyTheme(theme: 'light' | 'dark' | 'auto') {
+    private _applyTheme(theme: AuraTheme) {
         const t = theme || 'light';
         if (t === 'auto') {
             this._applySystemTheme();

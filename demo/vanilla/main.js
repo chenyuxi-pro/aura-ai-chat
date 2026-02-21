@@ -183,7 +183,7 @@ const defaultConfig = {
     },
     conversation: conversationProvider,
     ui: {
-        theme: 'light',
+        theme: 'professional-light',
     },
 };
 
@@ -550,33 +550,39 @@ window.addEventListener('mouseup', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-//  Theme segmented control
+//  Theme selection dropdown
 // ═══════════════════════════════════════════════════════════════════
 
-const themeSeg = document.getElementById('themeSeg');
-themeSeg.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => {
-        themeSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const theme = btn.dataset.theme;
-        defaultConfig.ui.theme = theme;
+const themeSelect = document.getElementById('themeSelect');
 
-        // Toggle demo page theme
-        document.body.classList.toggle('light', theme !== 'dark');
+function applyTheme(theme) {
+    defaultConfig.ui.theme = theme;
 
-        // Push config directly to widget
-        const widget = document.getElementById('widget');
-        widget.config = {
-            ...defaultConfig,
-            onEvent: (event) => addEvent(event),
-        };
-        addEvent({
-            type: 'debug',
-            timestamp: new Date().toISOString(),
-            payload: { message: `Theme changed to: ${theme}` },
-        });
+    // Toggle demo page theme
+    document.body.classList.remove('light', 'professional-light');
+    if (theme !== 'dark') {
+        document.body.classList.add(theme);
+    }
+
+    // Push config directly to widget
+    const widget = document.getElementById('widget');
+    widget.config = {
+        ...defaultConfig,
+        onEvent: (event) => addEvent(event),
+    };
+    addEvent({
+        type: 'debug',
+        timestamp: new Date().toISOString(),
+        payload: { message: `Theme changed to: ${theme}` },
     });
+}
+
+themeSelect.addEventListener('change', (e) => {
+    applyTheme(e.target.value);
 });
+
+// Initial theme application
+applyTheme(defaultConfig.ui.theme);
 
 // ═══════════════════════════════════════════════════════════════════
 //  Initialize

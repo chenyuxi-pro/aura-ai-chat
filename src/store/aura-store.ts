@@ -11,6 +11,7 @@ import type {
     AIProvider,
     AIProviderConfig,
     BuiltInProviderConfig,
+    AuraTheme,
 } from '../types/index.js';
 
 const LS_PREFIX = 'aura-ai-chat:';
@@ -45,7 +46,7 @@ export class AuraStore {
     private _isAuthenticated = false;
     private _settingsOpen = false;
     private _historyOpen = false;
-    private _theme: 'light' | 'dark' | 'auto' = 'auto';
+    private _theme: AuraTheme = 'auto';
     private _inputHeight: number = 120;
 
     private _listeners: Set<Listener> = new Set();
@@ -64,7 +65,7 @@ export class AuraStore {
     get isAuthenticated(): boolean { return this._isAuthenticated; }
     get settingsOpen(): boolean { return this._settingsOpen; }
     get historyOpen(): boolean { return this._historyOpen; }
-    get theme(): 'light' | 'dark' | 'auto' { return this._theme; }
+    get theme(): AuraTheme { return this._theme; }
     get inputHeight(): number { return this._inputHeight; }
 
     // ── Initialization ──────────────────────────────────────────
@@ -73,7 +74,7 @@ export class AuraStore {
         this._config = config;
 
         // Restore persisted values
-        const savedTheme = lsGet('theme') as 'light' | 'dark' | 'auto' | null;
+        const savedTheme = lsGet('theme') as AuraTheme | null;
         this._theme = savedTheme ?? config.ui?.theme ?? 'auto';
 
         const savedHeight = lsGet('input-height');
@@ -155,7 +156,7 @@ export class AuraStore {
         this._notify();
     }
 
-    setTheme(theme: 'light' | 'dark' | 'auto'): void {
+    setTheme(theme: AuraTheme): void {
         this._theme = theme;
         lsSet('theme', theme);
         this._notify();
