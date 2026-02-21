@@ -1,27 +1,166 @@
-# AngularHostApp
+# Angular Host App Demo for `aura-ai-chat`
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 17.3.17.
+This app is a realistic Angular 17 standalone host for the `aura-ai-chat` web component.
+It demonstrates dashboard workflows, AI tools, preview elements, conversation persistence, and built-in GitHub Copilot auth with Angular dev-server proxying.
 
-## Development server
+## Purpose
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+Use this project to validate `aura-ai-chat` in a real Angular UI, not a minimal toy page.
 
-## Code scaffolding
+It covers:
+- A real dashboard canvas with removable, resizable, renameable panels.
+- Mixed panel renderers: AG Grid, ECharts (line/bar), and stat cards.
+- Dynamic AI context from live Angular state.
+- Tool execution paths across query, safe, moderate, and destructive actions.
+- Confirmation previews rendered through Angular Custom Elements.
+- Local conversation history persistence and reload.
+- Built-in `github-copilot` provider plus a local mock provider.
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+## Tech Stack
 
-## Build
+- Angular 17 standalone components + signals
+- `aura-ai-chat` (local package dependency: `file:../../package`)
+- `ag-grid-angular` + `ag-grid-community`
+- `ngx-echarts` + `echarts`
+- `angular-split`
+- Public APIs: Open-Meteo and REST Countries
+- `localStorage` for dashboard/layout/theme/conversation persistence
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+## App Layout
 
-## Running unit tests
+- Top bar: logo, add panel, show/hide assistant, theme toggle
+- Main area: dashboard canvas with panel grid
+- Right sidebar: `<aura-chat>` widget, resizable and collapsible (min width 320px)
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+Primary host files:
+- `src/app/dashboard/dashboard.component.ts`
+- `src/app/dashboard/dashboard.component.html`
+- `src/app/dashboard/dashboard.component.scss`
 
-## Running end-to-end tests
+## How `aura-ai-chat` Is Used in This Project
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+1. Register web component bundle
+- `src/main.ts` imports `aura-ai-chat`:
+  - `import 'aura-ai-chat';`
 
-## Further help
+2. Mount widget in Angular template
+- `src/app/dashboard/dashboard.component.html` renders:
+  - `<aura-chat #chatWidget class="assistant-widget"></aura-chat>`
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+3. Register preview custom elements before widget mount
+- `DashboardComponent` constructor calls:
+  - `registerPreviewCustomElements(this.injector);`
+- Registration file:
+  - `src/app/ai-integration/custom-elements/register-preview-elements.ts`
+- Registered tags:
+  - `dashboard-panel-preview`
+  - `data-diff-view`
+  - `panel-delete-preview`
+
+4. Build full widget config
+- `src/app/ai-integration/widget-config.builder.ts` assembles:
+  - identity/header/welcome/suggested prompts
+  - providers (`github-copilot` built-in + `MockAiProvider`)
+  - behavior (`systemPrompt`, `dynamicContext`, `skills`, `tools`)
+  - conversation callbacks
+  - UI theme sync
+
+5. Inject config after widget exists, and re-inject on signal changes
+- `DashboardComponent.ngAfterViewInit()` calls `injectConfig()`.
+- A signal `effect()` re-injects whenever panel/theme signals change.
+- This keeps dynamic context current on each AI turn.
+
+6. Skill and tools
+- Skill: `src/app/ai-integration/skills/dashboard-builder.skill.ts`
+- Tools: `src/app/ai-integration/tools/*.ts`
+- Registry: `src/app/ai-integration/tools/tool-registry.service.ts`
+
+## Tools in This Demo
+
+Query tools:
+- `dashboard.get_panel_list`
+- `dashboard.get_source_catalog`
+- `data.fetch_weather`
+- `data.fetch_countries`
+
+Safe actions:
+- `dashboard.panel.rename`
+- `app.theme.change`
+
+Moderate actions:
+- `dashboard.panel.create` (preview: `dashboard-panel-preview`)
+- `dashboard.panel.update` (preview: `data-diff-view`)
+
+Destructive actions:
+- `dashboard.panel.delete` (preview: `panel-delete-preview`)
+
+## Data and Persistence
+
+Dashboard state:
+- `src/app/core/services/dashboard.service.ts`
+- Persists panel list and sidebar preferences in `localStorage`
+
+Conversation state:
+- `src/app/core/services/conversation.service.ts`
+- Implements `ConversationHistoryProvider` backed by `localStorage`
+
+Theme state:
+- `src/app/core/services/theme.service.ts`
+- Persists light/dark/system preference and applies resolved theme to DOM dataset
+
+## Local Setup
+
+### 1) Build the local `aura-ai-chat` package
+
+From repo root:
+
+```bash
+cd package
+npm install
+npm run build
+```
+
+### 2) Install and run Angular host app
+
+```bash
+cd ../host-examples/angular-host-app
+npm install
+npm run start
+```
+
+Open:
+- `http://localhost:4200`
+
+Note:
+- This app depends on `../../package` via `file:`. Rebuild `package` after provider/widget changes.
+
+## GitHub Provider Proxy: Why `/github` Must Be Last
+
+The built-in GitHub Copilot provider in `package/src/providers/github-copilot-provider.ts` uses multiple path prefixes:
+
+- `/github/login/device/code` and `/github/login/oauth/access_token` (GitHub web)
+- `/github-api/copilot_internal/v2/token` (GitHub REST)
+- `/github-copilot-api/*` and `/github-copilot-individual-api/*` (Copilot APIs)
+
+Your Angular proxy file (`proxy.conf.json`) must keep route order from most specific to most general:
+
+1. `/github-copilot-individual-api`
+2. `/github-copilot-api`
+3. `/github-api`
+4. `/github`  <-- keep this last
+
+Why:
+- If `/github` appears before `/github-api`, requests beginning with `/github-api` can be matched by `/github` first.
+- That rewrites to the wrong upstream (`github.com` instead of `api.github.com`) and causes 404s.
+
+## Troubleshooting 404s
+
+If you see:
+- `POST http://localhost:4200/github/login/device/code 404`
+- `GET http://localhost:4200/github-api/copilot_internal/v2/token 404`
+
+Check:
+- You are running Angular dev server with proxy enabled (`ng serve` from this app; `angular.json` already points to `proxy.conf.json`).
+- `proxy.conf.json` route order is unchanged (`/github` last).
+- Dev server restarted after proxy edits.
+- Network tab shows proxied requests hitting the intended upstream host.

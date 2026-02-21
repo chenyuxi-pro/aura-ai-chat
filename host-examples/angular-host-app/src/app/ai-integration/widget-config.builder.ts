@@ -59,6 +59,11 @@ export class WidgetConfigBuilder {
       },
       providers: [
         {
+          type: 'built-in',
+          providerId: 'github-copilot',
+          displayName: 'GitHub Copilot',
+        },
+        {
           type: 'custom',
           instance: this.mockProvider,
           displayName: 'Dash Mock',

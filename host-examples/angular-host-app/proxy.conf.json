@@ -1,0 +1,34 @@
+{
+    "/github-copilot-individual-api": {
+        "target": "https://api.individual.githubcopilot.com",
+        "secure": true,
+        "changeOrigin": true,
+        "pathRewrite": {
+            "^/github-copilot-individual-api": ""
+        }
+    }, 
+    "/github-copilot-api": {
+        "target": "https://api.githubcopilot.com",
+        "secure": true,
+        "changeOrigin": true,
+        "pathRewrite": {
+            "^/github-copilot-api": ""
+        }
+    },
+    "/github-api": {
+        "target": "https://api.github.com",
+        "secure": true,
+        "changeOrigin": true,
+        "pathRewrite": {
+            "^/github-api": ""
+        }
+    },
+    "/github": {
+        "target": "https://github.com",
+        "secure": true,
+        "changeOrigin": true,
+        "pathRewrite": {
+            "^/github": ""
+        }
+    }
+}
