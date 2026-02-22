@@ -1,294 +1,179 @@
-/* ──────────────────────────────────────────────────────────────────
- *  <aura-messages> — Message list, welcome state, streaming indicator
- * ────────────────────────────────────────────────────────────────── */
+import { LitElement, html, unsafeCSS, nothing, type TemplateResult } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import type {
+  ChatMessage,
+  PendingAction,
+} from "../../types/index.js";
+import styles from "./aura-messages.css?inline";
+import { renderBasicMarkdown, formatTimestamp } from "../../utils/helpers.js";
+import "../aura-action-preview/aura-action-preview.js";
+import "../aura-agent-iteration/aura-agent-iteration.js";
 
-import { LitElement, html, unsafeCSS, nothing } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
-import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import { MessageRole } from '../../types/index.js';
-import type { Message, SuggestedPrompt, Tool } from '../../types/index.js';
-import type { CopilotLoginStatus, DeviceFlowInfo } from '../../providers/github-copilot-provider.js';
-import styles from './aura-messages.css?inline';
-import '../confirmation-bubble/confirmation-bubble.js';
+@customElement("aura-messages")
+export class AuraMessagesElement extends LitElement {
+  static override styles = [unsafeCSS(styles)];
 
-export interface CopilotLoginState {
-  status: CopilotLoginStatus;
-  info?: DeviceFlowInfo;
-}
-
-export interface PendingProposal {
-  tool: Tool;
-  args: Record<string, unknown>;
-  summary: string;
-}
-
-@customElement('aura-messages')
-export class AuraMessages extends LitElement {
-  static override styles = unsafeCSS(styles);
-
-  @property({ type: Array }) messages: Message[] = [];
+  @property({ type: Object }) message!: ChatMessage;
+  @property({ type: String }) aiIcon = "smart_toy";
+  @property({ type: String }) aiName = "AI Assistant";
+  @property({ type: Object }) action?: PendingAction;
+  @property({ type: Boolean }) actionDisabled = false;
   @property({ type: Boolean }) streaming = false;
-  @property() streamingContent = '';
-  @property() aiName = 'Aura';
-  @property() welcomeTitle = '';
-  @property() welcomeMessage = '';
-  @property() welcomeIcon = '';
-  @property({ type: Array }) suggestedPrompts: SuggestedPrompt[] = [];
-  @state() private _rememberToken = true;
-  @property() aiIcon = '';
-  @property({ type: Object }) copilotLogin: CopilotLoginState | null = null;
-  @property({ type: Object }) pendingProposal: PendingProposal | null = null;
 
-  override updated(changedProps: Map<string, unknown>) {
-    super.updated(changedProps);
-    if (changedProps.has('messages') || changedProps.has('streamingContent') || changedProps.has('pendingProposal')) {
-      this._scrollToBottom();
-    }
-  }
-
-  override render() {
-    // Show copilot login card when provider needs auth
-    if (this.copilotLogin && this.copilotLogin.status !== 'LOGGED_IN') {
-      return this._renderCopilotLogin();
-    }
-    if (this.messages.length === 0 && !this.streaming) {
-      return this._renderWelcome();
-    }
-    return this._renderMessages();
-  }
-
-  private _renderCopilotLogin() {
-    const state = this.copilotLogin!;
-    return html`
-      <div class="welcome">
-        <div class="copilot-login-card">
-          <div class="copilot-logo">🐙</div>
-          <h2 class="welcome-title">Connect to GitHub Copilot</h2>
-          <p class="welcome-message">Sign in with your GitHub account to start chatting with Copilot.</p>
-
-          ${state.status === 'NOT_LOGGED_IN' ? html`
-            <div class="copilot-login-options">
-              <label class="copilot-remember-me">
-                <input type="checkbox" .checked=${this._rememberToken} @change=${this._onToggleRememberToken} />
-                Remember access token
-              </label>
-            </div>
-            <button class="copilot-signin-btn" @click=${this._onCopilotSignIn}>
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-                <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-              </svg>
-              Sign in with GitHub
-            </button>
-          ` : nothing}
-
-          ${state.status === 'ACTIVATING_DEVICE' && state.info ? html`
-            <div class="copilot-device-flow">
-              <div class="copilot-instruction">Enter this code at the link below:</div>
-              <div class="copilot-code-container">
-                <div class="copilot-user-code">${state.info.userCode}</div>
-                <button class="copilot-copy-btn" @click=${() => this._copyToClipboard(state.info!.userCode)} title="Copy code">
-                  <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-                    <path fill-rule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                    <path fill-rule="evenodd" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                  </svg>
-                </button>
-              </div>
-              <a class="copilot-verify-link" href="${state.info.verificationUri}" target="_blank" rel="noopener">
-                ${state.info.verificationUri} ↗
-              </a>
-              <div class="copilot-waiting">Waiting for authorization…</div>
-            </div>
-          ` : nothing}
-
-          ${state.status === 'ACTIVATING_DEVICE' && !state.info ? html`
-            <div class="copilot-status">⏳ Connecting to GitHub…</div>
-          ` : nothing}
-
-          ${state.status === 'LOGGING_IN' ? html`
-            <div class="copilot-status">🔄 Verifying authorization…</div>
-          ` : nothing}
-        </div>
-      </div>
-    `;
-  }
-
-  private _onCopilotSignIn() {
-    this.dispatchEvent(new CustomEvent('copilot-sign-in', {
-      detail: { rememberToken: this._rememberToken },
-      bubbles: true,
-      composed: true
-    }));
-  }
-
-  private _onToggleRememberToken(e: Event) {
-    this._rememberToken = (e.target as HTMLInputElement).checked;
-  }
-
-  private _copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-  }
-
-  private _renderWelcome() {
-    return html`
-      <div class="welcome">
-        <div class="welcome-icon">
-          ${this.welcomeIcon
-        ? html`<img src="${this.welcomeIcon}" alt="" style="width:32px;height:32px;border-radius:8px" />`
-        : html`✦`}
-        </div>
-        <h2 class="welcome-title">${this.welcomeTitle || `Hi, I'm ${this.aiName}`}</h2>
-        <p class="welcome-message">${this.welcomeMessage || 'How can I help you today?'}</p>
-        ${this.suggestedPrompts.length > 0
-        ? html`
-              <div class="suggested-prompts">
-                ${this.suggestedPrompts.map(
-          prompt => html`
-                    <button class="prompt-chip" @click=${() => this._onSuggestedPrompt(prompt)}>
-                      ${prompt.icon ? html`<span>${prompt.icon}</span>` : nothing}
-                      ${prompt.label}
-                    </button>
-                  `
-        )}
-              </div>
-            `
-        : nothing}
-      </div>
-    `;
-  }
-
-  private _renderMessages() {
-    return html`
-      <div class="messages-list">
-        ${this.messages.map(msg => this._renderMessage(msg))}
-        ${this.pendingProposal ? this._renderPendingProposal() : nothing}
-        ${this.streaming ? this._renderStreamingMessage() : nothing}
-      </div>
-    `;
-  }
-
-  private _renderMessage(msg: Message) {
-    const isUser = msg.role === MessageRole.User;
-    const isError = msg.role === MessageRole.Error;
-    const roleClass = isError ? 'assistant error' : msg.role;
-    const avatarClass = isUser ? 'user-avatar' : isError ? 'error-avatar' : 'ai';
-    const avatarContent = isUser
-      ? '👤'
-      : this.aiIcon
-        ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
-        : this.aiName.charAt(0).toUpperCase();
-
-    return html`
-      <div class="message ${roleClass}">
-        <div class="avatar ${avatarClass}">
-          ${avatarContent}
-        </div>
-        <div class="bubble">
-          ${unsafeHTML(this._renderMarkdown(msg.content))}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderStreamingMessage() {
-    const avatarContent = this.aiIcon
-      ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
-      : this.aiName.charAt(0).toUpperCase();
-    return html`
-      <div class="message assistant">
-        <div class="avatar ai">${avatarContent}</div>
-        <div class="bubble">
-          ${this.streamingContent
-        ? unsafeHTML(this._renderMarkdown(this.streamingContent))
-        : html`
-                <div class="typing-indicator">
-                  <div class="dot"></div>
-                  <div class="dot"></div>
-                  <div class="dot"></div>
-                </div>
-              `}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderPendingProposal() {
-    const proposal = this.pendingProposal;
-    if (!proposal) return nothing;
-
-    const avatarContent = this.aiIcon
-      ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
-      : this.aiName.charAt(0).toUpperCase();
-    const impact = this._impactLabel(proposal.tool.risk);
-    const summary = proposal.summary?.trim()
-      || `Execute ${proposal.tool.label || proposal.tool.title || proposal.tool.name}.`;
-
-    return html`
-      <div class="message assistant action-message">
-        <div class="avatar ai">${avatarContent}</div>
-        <div class="bubble action-wrapper">
-          <p class="action-summary">${summary}</p>
-          <p class="action-impact">${impact}</p>
-          <aura-confirmation-bubble
-            .tool=${proposal.tool}
-            .args=${proposal.args}
-            .summary=${''}
-          ></aura-confirmation-bubble>
-        </div>
-      </div>
-    `;
-  }
-
-  private _impactLabel(risk: Tool['risk']): string {
-    if (risk === 'destructive') {
-      return 'Impact: destructive change. Approval and typed confirmation are required.';
-    }
-    if (risk === 'moderate') {
-      return 'Impact: this will modify application data. Approval is required.';
-    }
-    return 'Impact: this action is low risk.';
-  }
-
-  private _renderMarkdown(content: string): string {
-    const rawHtml = marked.parse(content, { async: false }) as string;
-    const clean = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'span',
-        'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'del', 'hr', 'img', 'sup', 'sub',
-      ],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'title'],
-    });
-
-    // Add copy buttons to code blocks
-    return clean.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g,
-      (_match, attrs, code) => {
-        return `<pre><code${attrs}>${code}</code><button class="copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">Copy</button></pre>`;
-      }
-    );
-  }
-
-  private _scrollToBottom() {
-    requestAnimationFrame(() => {
-      this.scrollTop = this.scrollHeight;
-    });
-  }
-
-  private _onSuggestedPrompt(prompt: SuggestedPrompt) {
+  private handleRetryClick(): void {
     this.dispatchEvent(
-      new CustomEvent('send-prompt', {
-        detail: { prompt: prompt.prompt },
+      new CustomEvent("retry", {
         bubbles: true,
         composed: true,
-      })
+      }),
     );
+  }
+
+  override render(): TemplateResult {
+    if (this.action) return this.renderActionMessage();
+
+    const msg = this.message;
+    if (!msg) return html``;
+
+    if (msg.metadata?.["isIteration"] === true) {
+      return html`<aura-agent-iteration .message=${msg}></aura-agent-iteration>`;
+    }
+
+    const hasToolCalls = !!(msg.toolCalls && msg.toolCalls.length > 0);
+    const isTool = msg.role === "tool";
+
+    // Intermediate assistant planning/tool-call messages are represented
+    // in the iteration timeline instead of as standalone chat bubbles.
+    if (hasToolCalls) {
+      return html``;
+    }
+
+    if (isTool) {
+      // Tool outputs are shown inside the expanded step detail to keep the
+      // transcript compact and grouped like an agent timeline.
+      return html``;
+    }
+
+    const isUser = msg.role === "user";
+    const isError = !!(
+      msg.metadata?.["type"] === "error" || msg.metadata?.["isError"]
+    );
+    const layoutClass = isUser
+      ? "user-message"
+      : isError
+        ? "error-message"
+        : "ai-message";
+
+    const senderLabel = isUser ? "You" : this.aiName;
+    const avatarSymbol = isUser
+      ? html`<md-icon>person</md-icon>`
+      : isError
+        ? html`<md-icon>error</md-icon>`
+        : html`<md-icon>${this.aiIcon}</md-icon>`;
+
+    return html`
+      <div
+        class="chat-message ${layoutClass}"
+        role="log"
+        aria-label="${senderLabel} message"
+        part="message message-${msg.role}"
+      >
+        <div class="message-avatar" part="avatar">${avatarSymbol}</div>
+        <div class="message-content">
+          <div class="message-header">
+            <span class="message-sender">${senderLabel}</span>
+            <span class="message-time">
+              <time datetime=${new Date(msg.timestamp).toISOString()}>
+                ${formatTimestamp(msg.timestamp)}
+              </time>
+            </span>
+          </div>
+          <div class="message-body" part="message-body">
+            <div
+              class="message-text"
+              .innerHTML=${renderBasicMarkdown(msg.content)}
+            ></div>
+            ${this.streaming
+              ? html`
+                  <span class="streaming-dots">
+                    <span class="streaming-dot"></span>
+                    <span class="streaming-dot"></span>
+                    <span class="streaming-dot"></span>
+                  </span>
+                `
+              : nothing}
+            ${isError
+              ? html`
+                  <button
+                    class="retry-btn"
+                    part="retry-button"
+                    @click=${this.handleRetryClick}
+                  >
+                    Retry
+                  </button>
+                `
+              : nothing}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderActionMessage(): TemplateResult {
+    const a = this.action!;
+    return html`
+      <div
+        class="chat-message ai-message"
+        role="log"
+        aria-label="${this.aiName} action confirmation"
+        part="message message-action"
+      >
+        <div class="message-avatar" part="avatar">
+          <md-icon>${this.aiIcon}</md-icon>
+        </div>
+        <div class="message-content" style="max-width: 85%">
+          <div class="message-header">
+            <span class="message-sender">${this.aiName}</span>
+            <span class="message-time">
+              <time datetime=${new Date().toISOString()}>
+                ${formatTimestamp(Date.now())}
+              </time>
+            </span>
+          </div>
+          <div class="message-body message-body--action" part="message-body">
+            <action-preview
+              .action=${a}
+              .disabled=${this.actionDisabled}
+              @approve-action=${(e: CustomEvent) => {
+                e.stopPropagation();
+                this.dispatchEvent(
+                  new CustomEvent("approve-action", {
+                    bubbles: true,
+                    composed: true,
+                    detail: e.detail,
+                  }),
+                );
+              }}
+              @reject-action=${(e: CustomEvent) => {
+                e.stopPropagation();
+                this.dispatchEvent(
+                  new CustomEvent("reject-action", {
+                    bubbles: true,
+                    composed: true,
+                    detail: e.detail,
+                  }),
+                );
+              }}
+            ></action-preview>
+          </div>
+        </div>
+      </div>
+    `;
   }
 }
 
 declare global {
   interface HTMLElementTagNameMap {
-    'aura-messages': AuraMessages;
+    "aura-messages": AuraMessagesElement;
   }
 }

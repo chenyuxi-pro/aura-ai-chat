@@ -1,117 +1,266 @@
-/* ──────────────────────────────────────────────────────────────────
- *  <aura-history> — Conversation history side drawer
- * ────────────────────────────────────────────────────────────────── */
+import {
+  LitElement,
+  html,
+  unsafeCSS,
+  type TemplateResult,
+  type PropertyValues,
+} from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import "@material/web/icon/icon.js";
+import styles from "./aura-history.css?inline";
+import type { AuraChatHistorySummary } from "../../types/index.js";
+import { toAuraChatHistorySummaries } from "../../utils/histories.js";
+import type { HistoryManager } from "../../services/history-manager.js";
 
-import { LitElement, html, unsafeCSS, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import type { ConversationMeta } from '../../types/index.js';
-import styles from './aura-history.css?inline';
-
-@customElement('aura-history')
+@customElement("aura-history")
 export class AuraHistory extends LitElement {
-  static override styles = unsafeCSS(styles);
+  static override styles = [unsafeCSS(styles)];
 
-  @property({ type: Boolean, reflect: true }) open = false;
-  @property({ type: Array }) conversations: ConversationMeta[] = [];
-  @property() activeConversationId = '';
-  @property({ type: Boolean }) canDelete = false;
-  @property({ type: Boolean }) canRename = false;
+  @property({ type: Object }) historyManager: HistoryManager | null = null;
+  @property({ type: String }) activeConversationId = "";
 
-  override render() {
-    if (!this.open) return nothing;
+  @state() private searchQuery = "";
+  @state() private conversations: AuraChatHistorySummary[] = [];
+  @state() private loading = false;
 
-    return html`
-      <div class="overlay" @click=${this._onClose}></div>
-      <div class="drawer">
-        <div class="drawer-header">
-          <h3>History</h3>
-          <button class="close-btn" @click=${this._onClose}>✕</button>
-        </div>
-        <div class="drawer-body">
-          ${this.conversations.length === 0
-        ? html`
-                <div class="empty-state">
-                  <div class="empty-icon">💬</div>
-                  <div>No conversations yet</div>
-                </div>
-              `
-        : this.conversations.map(conv => this._renderConversation(conv))}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderConversation(conv: ConversationMeta) {
-    const isActive = conv.id === this.activeConversationId;
-    const date = new Date(conv.updatedAt).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    return html`
-      <div
-        class="conversation-item ${isActive ? 'active' : ''}"
-        @click=${() => this._selectConversation(conv.id)}
-      >
-        <span class="conv-icon">💬</span>
-        <div class="conv-info">
-          <div class="conv-title">${conv.title || 'Untitled'}</div>
-          <div class="conv-date">${date}</div>
-        </div>
-        <div class="conv-actions">
-          ${this.canRename
-        ? html`
-                <button class="conv-action-btn" title="Rename" @click=${(e: Event) => { e.stopPropagation(); this._renameConversation(conv); }}>
-                  ✏️
-                </button>
-              `
-        : nothing}
-          ${this.canDelete
-        ? html`
-                <button class="conv-action-btn delete" title="Delete" @click=${(e: Event) => { e.stopPropagation(); this._deleteConversation(conv.id); }}>
-                  🗑️
-                </button>
-              `
-        : nothing}
-        </div>
-      </div>
-    `;
-  }
-
-  private _selectConversation(id: string) {
-    this.dispatchEvent(
-      new CustomEvent('select-conversation', { detail: { id }, bubbles: true, composed: true })
-    );
-  }
-
-  private _deleteConversation(id: string) {
-    this.dispatchEvent(
-      new CustomEvent('delete-conversation', { detail: { id }, bubbles: true, composed: true })
-    );
-  }
-
-  private _renameConversation(conv: ConversationMeta) {
-    const newTitle = prompt('Rename conversation:', conv.title || 'Untitled');
-    if (newTitle !== null) {
-      this.dispatchEvent(
-        new CustomEvent('rename-conversation', {
-          detail: { id: conv.id, title: newTitle },
-          bubbles: true,
-          composed: true,
-        })
-      );
+  override async updated(_changedProperties: PropertyValues): Promise<void> {
+    if (_changedProperties.has("historyManager") && this.historyManager) {
+      await this.loadConversations();
+      this.searchQuery = "";
     }
   }
 
-  private _onClose() {
-    this.dispatchEvent(new CustomEvent('close-history', { bubbles: true, composed: true }));
+  override render(): TemplateResult {
+    const filtered = this.getFilteredConversations();
+
+    return html`
+      <div class="history-overlay" @click=${this.handleOverlayClick}>
+        <div class="history-modal" @click=${(e: Event) => e.stopPropagation()}>
+          ${this.renderHeader()} ${this.renderSearch()}
+          ${this.renderBody(filtered)}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderHeader(): TemplateResult {
+    return html`
+      <div class="history-modal__header">
+        <div class="history-modal__header-left">
+          <md-icon class="history-modal__header-icon">history</md-icon>
+          <span class="history-modal__title">Conversation History</span>
+        </div>
+        <button
+          class="history-modal__close"
+          @click=${this.handleClose}
+          aria-label="Close history"
+        >
+          <md-icon>close</md-icon>
+        </button>
+      </div>
+    `;
+  }
+
+  private renderSearch(): TemplateResult {
+    return html`
+      <div class="history-search">
+        <md-icon class="history-search__icon">search</md-icon>
+        <input
+          class="history-search__input"
+          type="text"
+          placeholder="Search conversations..."
+          aria-label="Search conversations"
+          .value=${this.searchQuery}
+          @input=${this.handleSearch}
+        />
+      </div>
+    `;
+  }
+
+  private renderBody(filtered: AuraChatHistorySummary[]): TemplateResult {
+    return html`
+      <div
+        class="history-modal__body"
+        role="listbox"
+        aria-label="Conversation history"
+      >
+        ${this.loading
+          ? this.renderLoadingState()
+          : filtered.length === 0
+            ? this.renderEmptyState()
+            : filtered.map((conv) => this.renderConversationItem(conv))}
+      </div>
+    `;
+  }
+
+  private renderLoadingState(): TemplateResult {
+    return html`
+      <div
+        class="history-loading"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <span class="history-loading__spinner" aria-hidden="true"></span>
+        <span>Loading conversations...</span>
+      </div>
+    `;
+  }
+
+  private renderEmptyState(): TemplateResult {
+    return html`
+      <div class="history-empty">
+        <md-icon class="history-empty__icon">forum</md-icon>
+        <div class="history-empty__title">No conversations yet</div>
+        <div class="history-empty__subtitle">
+          Your chat history will appear here
+        </div>
+      </div>
+    `;
+  }
+
+  private renderConversationItem(conv: AuraChatHistorySummary): TemplateResult {
+    const isActive = conv.id === this.activeConversationId;
+    return html`
+      <div
+        class="history-item ${isActive ? "active" : ""}"
+        role="option"
+        aria-selected=${isActive}
+        tabindex="0"
+        @click=${() => this.handleSelect(conv.id)}
+        @keydown=${(e: KeyboardEvent) => this.handleItemKeydown(e, conv.id)}
+      >
+        <div class="history-item__content">
+          <div class="history-item__title">${conv.title}</div>
+          <div class="history-item__preview">${conv.preview}</div>
+          <div class="history-item__meta">
+            <span class="history-item__time">
+              <md-icon class="history-item__meta-icon">schedule</md-icon>
+              ${this.formatRelativeTime(conv.updatedAt)}
+            </span>
+            <span class="history-item__count">
+              <md-icon class="history-item__meta-icon"
+                >chat_bubble_outline</md-icon
+              >
+              ${conv.messageCount}
+            </span>
+          </div>
+        </div>
+        <button
+          class="history-item__delete"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this.handleDelete(conv.id);
+          }}
+          aria-label="Delete conversation"
+          title="Delete"
+        >
+          <md-icon>delete_outline</md-icon>
+        </button>
+      </div>
+    `;
+  }
+
+  private getFilteredConversations(): AuraChatHistorySummary[] {
+    const query = this.searchQuery.toLowerCase();
+    return query
+      ? this.conversations.filter(
+          (c) =>
+            c.title.toLowerCase().includes(query) ||
+            c.preview.toLowerCase().includes(query),
+        )
+      : this.conversations;
+  }
+
+  private handleOverlayClick(e: Event): void {
+    if ((e.target as HTMLElement).classList.contains("history-overlay")) {
+      this.handleClose();
+    }
+  }
+
+  private handleItemKeydown(e: KeyboardEvent, conversationId: string): void {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this.handleSelect(conversationId);
+    }
+  }
+
+  private loadConversations = async (): Promise<void> => {
+    if (!this.historyManager) return;
+    this.loading = true;
+    try {
+      const conversations = await this.historyManager.listConversations?.();
+      this.conversations = toAuraChatHistorySummaries(conversations ?? []);
+    } catch (err) {
+      console.error("[aura-history] Failed to load conversations:", err);
+    } finally {
+      this.loading = false;
+    }
+  };
+
+  private handleSearch(e: Event): void {
+    this.searchQuery = (e.target as HTMLInputElement).value;
+  }
+
+  private handleClose(): void {
+    this.searchQuery = "";
+    this.dispatchEvent(
+      new CustomEvent("history-closed", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private async handleSelect(conversationId: string): Promise<void> {
+    if (!this.historyManager) return;
+    try {
+      const loadedConversation =
+        await this.historyManager.loadConversation?.(conversationId);
+      this.dispatchEvent(
+        new CustomEvent("conversation-selected", {
+          bubbles: true,
+          composed: true,
+          detail: { conversation: loadedConversation },
+        }),
+      );
+    } catch (err) {
+      console.error("[aura-history] Failed to select conversation:", err);
+    }
+  }
+
+  private async handleDelete(conversationId: string): Promise<void> {
+    if (!this.historyManager) return;
+    try {
+      await this.historyManager.deleteConversation?.(conversationId);
+      await this.loadConversations();
+      this.dispatchEvent(
+        new CustomEvent("conversation-deleted", {
+          bubbles: true,
+          composed: true,
+          detail: { conversationId },
+        }),
+      );
+    } catch (err) {
+      console.error("[aura-history] Failed to delete conversation:", err);
+    }
+  }
+
+  private formatRelativeTime(ts: number): string {
+    const diff = Date.now() - ts;
+    const minutes = Math.floor(diff / 60_000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString();
   }
 }
 
 declare global {
   interface HTMLElementTagNameMap {
-    'aura-history': AuraHistory;
+    "aura-history": AuraHistory;
   }
 }

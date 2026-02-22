@@ -1,0 +1,96 @@
+:host {
+  display: block;
+}
+
+.attach-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.attach-btn md-icon {
+  font-size: 20px;
+  --md-icon-size: 20px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  max-width: 180px;
+}
+
+.chip_name {
+  font-size: 11px;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.chip___size {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.chip__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.chip__remove:hover {
+  color: #ef4444;
+}
+
+.chip__remove md-icon {
+  font-size: 14px;
+  --md-icon-size: 14px;
+}
+
+input[type="file"] {
+  display: none;
+}
+
+.error-text {
+  font-size: 11px;
+  color: #ef4444;
+  margin-top: 4px;
+  padding-left: 4px;
+}

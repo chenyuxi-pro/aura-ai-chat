@@ -1,0 +1,332 @@
+:host {
+  display: block;
+  font-family: var(--aura-font-family, system-ui, -apple-system, sans-serif);
+}
+
+.timeline-item {
+  display: flex;
+  gap: 0;
+  position: relative;
+  min-height: 22px;
+}
+
+.timeline-rail {
+  width: 20px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-top: 4px;
+}
+
+.timeline-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--aura-border-color, #e0e0e0);
+}
+
+:host(:last-child) .timeline-rail::before {
+  bottom: calc(100% - 10px);
+}
+
+:host(:first-child) .timeline-rail::before {
+  top: 10px;
+}
+
+.timeline-icon {
+  font-size: 12px;
+  --md-icon-size: 12px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  color: var(--aura-text-tertiary, #d1d5db);
+  filter: drop-shadow(0 0 2px var(--aura-bg-surface, #fff));
+}
+
+.timeline-icon--running {
+  color: var(--aura-primary, #4285f4);
+  animation: iconSpin 1.2s linear infinite;
+}
+
+.timeline-icon--complete {
+  color: var(--aura-success, #0f9d58);
+}
+
+.timeline-icon--error {
+  color: var(--aura-error, #d93825);
+}
+
+.timeline-icon--waiting {
+  color: var(--aura-warning, #f9ab00);
+}
+
+.timeline-icon--rejected {
+  color: var(--aura-warning, #f9ab00);
+}
+
+@keyframes iconSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 1px;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-height: 20px;
+  padding: 1px 4px 1px 0;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  color: var(--aura-text-secondary, #4b5563);
+  user-select: none;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.step-row md-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.step-row[role="button"] {
+  cursor: pointer;
+}
+
+.step-row[role="button"]:hover {
+  background: var(--aura-surface-hover, rgba(15, 23, 42, 0.045));
+}
+
+.step__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.step__duration {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  line-height: 1.2;
+  color: var(--aura-text-tertiary, #94a3b8);
+  font-variant-numeric: tabular-nums;
+}
+
+.step__chevron {
+  flex-shrink: 0;
+  font-size: 12px;
+  --md-icon-size: 12px;
+  line-height: 1;
+  color: var(--aura-text-tertiary, #94a3b8);
+  transition: transform 0.15s ease;
+}
+
+.step__chevron--open {
+  transform: rotate(90deg);
+}
+
+.step__spacer {
+  flex: 1;
+}
+
+.step__detail {
+  margin: 1px 8px 4px 0;
+  padding: 6px 8px;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--aura-text-secondary, #475569);
+  border-radius: 6px;
+  border: 1px solid var(--aura-border-color, #e2e8f0);
+  background: var(--aura-surface-subtle, #f8fafc);
+  animation: detailFadeIn 0.12s ease;
+}
+
+@keyframes detailFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step__detail-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.step__detail-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--aura-text-tertiary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.step__detail-value {
+  font-family: "SFMono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.6875rem;
+  color: var(--aura-text-primary, #0f172a);
+  background: var(--aura-surface-code, rgba(148, 163, 184, 0.14));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.step__detail-text {
+  margin-top: 2px;
+  color: var(--aura-text-secondary, #475569);
+}
+
+.step__code {
+  display: block;
+  background: var(--aura-surface-code, #f1f3f4);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 2px 0 4px;
+  font-family: "SFMono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.step__code::-webkit-scrollbar {
+  width: 5px;
+}
+
+.step__code::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.step__code::-webkit-scrollbar-thumb {
+  background: var(--aura-border-color, #d1d5db);
+  border-radius: 4px;
+}
+
+.step__code::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.step__code--result {
+  max-height: 80px;
+}
+
+aura-json-view {
+  margin: 2px 0 4px;
+  border: 1px solid var(--aura-border-color, rgba(148, 163, 184, 0.24));
+  border-radius: 5px;
+}
+
+.step__action-preview {
+  display: block;
+  margin: 2px 0;
+}
+
+.step__user-input {
+  margin: 2px 0;
+}
+
+.step__user-input-question {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--aura-text-primary, #0f172a);
+}
+
+.step__user-input-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.step__user-input-field {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  font-family: inherit;
+  border: 1px solid var(--aura-border-color, #dbe2ea);
+  border-radius: 6px;
+  background: var(--aura-bg-surface, #fff);
+  color: var(--aura-text-primary, #0f172a);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.step__user-input-field:focus {
+  border-color: var(--aura-primary, #4285f4);
+}
+
+.step__user-input-field::placeholder {
+  color: var(--aura-text-tertiary, #9ca3af);
+}
+
+.step__user-input-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--aura-primary, #2563eb);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.step__user-input-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.step__user-input-btn:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+.step__user-input-btn md-icon {
+  font-size: 14px;
+  --md-icon-size: 14px;
+}
+
+.step__user-input-answer {
+  margin: 2px 0;
+}
+
+.step__user-input-answer .step__user-input-question {
+  margin: 2px 0 6px;
+}
+
+.step__user-input-reply {
+  margin: 2px 0;
+  color: var(--aura-text-primary, #1a1a1a);
+  font-weight: 500;
+}

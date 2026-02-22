@@ -1,0 +1,82 @@
+:host {
+  display: block;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--aura-color, #333);
+  border: 1px solid var(--aura-border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--aura-json-bg, #fff);
+  overflow: hidden;
+}
+
+.json-view {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  background: inherit;
+  border-radius: 3px;
+  max-height: var(--aura-json-view-max-height, 200px);
+  overflow-y: auto;
+}
+
+.json-view::-webkit-scrollbar {
+  width: 5px;
+}
+
+.json-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.json-view::-webkit-scrollbar-thumb {
+  background: var(--aura-border-color, #d1d5db);
+  border-radius: 4px;
+}
+
+.json-view::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.json-key {
+  color: var(--aura-accent, #187aba);
+}
+
+.json-string {
+  color: #a31515;
+}
+
+.json-number {
+  color: #098658;
+}
+
+.json-boolean {
+  color: #8451a5;
+}
+
+.json-null {
+  color: var(--aura-muted-color, #858585);
+}
+
+:host([data-theme="dark"]) .json-string {
+  color: #ce9178;
+}
+
+:host([data-theme="dark"]) .json-number {
+  color: #b5cea8;
+}
+
+:host([data-theme="dark"]) .json-boolean {
+  color: #569cd6;
+}
+
+:host([data-theme="dark"]) .json-null {
+  color: #858585;
+}
+
+:host([data-theme="dark"]) .json-key {
+  color: #9cdcfe;
+}

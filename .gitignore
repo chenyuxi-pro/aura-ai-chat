@@ -29,3 +29,4 @@ dist
 coverage
 .vscode
 .DS_Store
+src2/*

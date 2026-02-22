@@ -1,70 +1,129 @@
-/* ──────────────────────────────────────────────────────────────────
- *  aura-ai-chat — Library Entry Point
- *  Exports all public types and the <aura-chat> custom element.
- * ────────────────────────────────────────────────────────────────── */
+import "./components/aura-chat/aura-chat.js";
+import "./components/aura-console/aura-console.js";
 
-// Components
-export { AuraChat } from './components/aura-chat/aura-chat.js';
-export { AuraHeader } from './components/aura-header/aura-header.js';
-export { AuraMessages } from './components/aura-messages/aura-messages.js';
-export { AuraInput } from './components/aura-input/aura-input.js';
-export { AuraSettings } from './components/aura-settings/aura-settings.js';
-export { AuraHistory } from './components/aura-history/aura-history.js';
-
-// Types — re-export everything
 export type {
-    JSONSchemaType,
-    JSONSchema,
-    TextContent,
-    ImageContent,
-    EmbeddedResource,
-    ToolResultContent,
-    ToolResult,
-    Tool,
-    ToolSummary,
-    Skill,
-    SkillSummary,
-    AIModel,
-    AIRequest,
-    AIStreamChunk,
-    AIProvider,
-    BuiltInProviderConfig,
-    CustomProviderConfig,
-    AIProviderConfig,
-    ConversationMeta,
-    Message,
-    CustomMessageComponent,
-    ConversationHistoryProvider,
-    AuraEventType,
-    AuraEvent,
-    SettingsRule,
-    SettingsControl,
-    UIConfig,
-    AIBehaviorConfig,
-    IdentityConfig,
-    HeaderConfig,
-    WelcomeConfig,
-    SuggestedPrompt,
-    AuraConfig,
-} from './types/index.js';
+  AuraConfig,
+  AuraIdentityConfig,
+  AuraAppearanceConfig,
+  AuraAgentConfig,
+  AgentConfig,
+  AppMetadata,
+  AIProvider,
+  ProviderConfig,
+  BuiltInProviderConfig,
+  CustomProviderConfig,
+  ProviderOptions,
+  ProviderMessage,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderResponseChunk,
+  ToolDefinition,
+  ToolCallRequest,
+  Skill,
+  AuraTool,
+  ToolExecutionContext,
+  AuraToolResult,
+  ToolResultContent,
+  TextContent,
+  ImageContent,
+  AudioContent,
+  EmbeddedResource,
+  CustomElementContent,
+  ContentAnnotations,
+  TextResourceContents,
+  BlobResourceContents,
+  ToolAnnotations,
+  AuraToolRiskType,
+  AuraResource,
+  ChatMessage,
+  Conversation,
+  IConversationManager,
+  ToolCallLogEntry,
+  AuraEvent,
+  SuggestedPrompt,
+  RichContent,
+  MessageRoleType,
+  Attachment,
+  ModelInfo,
+  ActionStatusType,
+  PendingAction,
+  AgentStep,
+  AgentStepKindType,
+  AgentStepStatusType,
+} from "./types/index.js";
 
-// Utility functions
 export {
-    getToolDisplayName,
-    getSkillDisplayName,
-    isExcluded,
-} from './types/index.js';
+  needsConfirmation,
+  auraToMcpAnnotations,
+  AuraEventType,
+  AuraToolRisk,
+  ActionStatus,
+  AgentStepKind,
+  AgentStepStatus,
+  MessageRole,
+} from "./types/index.js";
 
-// Providers — for direct usage or extension
-export { BaseProvider } from './providers/base-provider.js';
-export { OpenAIProvider } from './providers/openai-provider.js';
-export { AnthropicProvider } from './providers/anthropic-provider.js';
-export { OllamaProvider } from './providers/ollama-provider.js';
-export { GitHubCopilotProvider } from './providers/github-copilot-provider.js';
-export type { CopilotLoginStatus, DeviceFlowInfo } from './providers/github-copilot-provider.js';
+export { AuraChat } from "./components/aura-chat/aura-chat.js";
+export { AuraMessagesElement } from "./components/aura-messages/aura-messages.js";
+export { SuggestedPromptsElement } from "./components/suggested-prompts/suggested-prompts.js";
+export { ConfirmationBubbleElement } from "./components/confirmation-bubble/confirmation-bubble.js";
+export { FileAttachmentElement } from "./components/file-attachment/file-attachment.js";
+export { ActionPreviewElement } from "./components/aura-action-preview/aura-action-preview.js";
+export { AuraResultViewElement } from "./components/aura-result-view/aura-result-view.js";
+export { AuraAgentIterationElement } from "./components/aura-agent-iteration/aura-agent-iteration.js";
+export { AuraAgentStepElement } from "./components/aura-agent-step/aura-agent-step.js";
 
-// Infrastructure — advanced usage
-export { store } from './store/aura-store.js';
-export { promptBuilder } from './prompt/prompt-builder.js';
-export { skillRegistry } from './skills/skill-registry.js';
-export { toolRegistry } from './tools/tool-registry.js';
+export { SkillRegistry } from "./skills/skill-registry.js";
+export {
+  ToolDispatcher,
+  contentToModelText,
+} from "./services/tool-dispatcher.js";
+export { ProviderManager } from "./services/provider-manager.js";
+export { CommunicationManager } from "./services/communication-manager.js";
+export type { OrchestratorCallbacks } from "./services/communication-manager.js";
+export {
+  WebMcpBridge,
+  ToolExporter,
+  ToolImporter,
+  supportsWebMcp,
+} from "./services/webmcp-bridge.js";
+
+export {
+  buildSystemPrompt,
+  buildSkillSelectToolDef,
+  buildSkillSwitchToolDef,
+  buildAskUserToolDef,
+  DEFAULT_MASTER_SYSTEM_PROMPT,
+  SKILL_SELECT_TOOL_NAME,
+  ASK_USER_TOOL_NAME,
+  SKILL_SWITCH_TOOL_NAME,
+} from "./prompt/prompt-builder.js";
+
+export {
+  estimateTokens,
+  estimateMessagesTokens,
+  trimToTokenBudget,
+} from "./services/tokenBudget.js";
+
+export {
+  createProviders,
+  getProviderById,
+  BaseProvider,
+  GitHubCopilotProvider,
+} from "./providers/index.js";
+
+export type {
+  CopilotLoginStatus,
+  DeviceFlowInfo,
+  GitHubCopilotProviderConfig,
+} from "./providers/index.js";
+
+export { EventBus, AUDIT_EVENT_NAME } from "./logging/event-bus.js";
+export { AuraConsole } from "./components/aura-console/aura-console.js";
+
+export type { AuraTheme } from "./themes/index.js";
+export {
+  lightTheme,
+  darkTheme,
+  professionalLightTheme,
+} from "./themes/index.js";

@@ -23,6 +23,7 @@
     "dev": "npm run build && vite"
   },
   "dependencies": {
+    "@material/web": "^2.4.1",
     "dompurify": "^3.2.0",
     "lit": "^3.3.2",
     "marked": "^15.0.0",

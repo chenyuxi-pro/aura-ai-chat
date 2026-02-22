@@ -1,76 +1,80 @@
-/* ──────────────────────────────────────────────────────────────────
- *  Skill Registry
- * ────────────────────────────────────────────────────────────────── */
-
-import type { Skill, SkillSummary, Tool } from '../types/index.js';
-import { toolRegistry } from '../tools/tool-registry.js';
+import type { Skill, AuraTool, ToolDefinition } from "../types/index.js";
 
 export class SkillRegistry {
-    private _skills: Map<string, Skill> = new Map();
+  private skills = new Map<string, Skill>();
+  private tools = new Map<string, AuraTool>();
 
-    register(skill: Skill): void {
-        this._skills.set(skill.name, { enabled: true, ...skill });
-    }
+  registerSkills(skills: Skill[]): void {
+    for (const skill of skills) this.registerSkill(skill);
+  }
 
-    registerAll(skills: Skill[]): void {
-        for (const skill of skills) {
-            this.register(skill);
-        }
-    }
+  registerSkill(skill: Skill): void {
+    this.skills.set(skill.name, skill);
+  }
 
-    unregister(name: string): void {
-        this._skills.delete(name);
-    }
+  registerTools(tools: AuraTool[]): void {
+    for (const tool of tools) this.registerTool(tool);
+  }
 
-    get(name: string): Skill | undefined {
-        return this._skills.get(name);
-    }
+  registerTool(tool: AuraTool): void {
+    this.tools.set(tool.name, tool);
+  }
 
-    getAll(): Skill[] {
-        return Array.from(this._skills.values());
-    }
+  getSkill(name: string): Skill | undefined {
+    return this.skills.get(name);
+  }
 
-    getEnabled(): Skill[] {
-        return this.getAll().filter(s => s.enabled !== false);
-    }
+  getTool(name: string): AuraTool | undefined {
+    return this.tools.get(name);
+  }
 
-    getSummaries(): SkillSummary[] {
-        return this.getEnabled().map(s => ({
-            name: s.name,
-            title: s.title,
-            description: s.description,
-        }));
-    }
+  getAllSkills(): Skill[] {
+    return Array.from(this.skills.values());
+  }
 
-    /** Returns the full skill detail with tools — used by the AI's get_skill_detail call */
-    getDetail(name: string): { systemPrompt: string; tools: Tool[] } | null {
-        const skill = this._skills.get(name);
-        if (!skill || skill.enabled === false) return null;
+  getSkillsSummary(): { name: string; description: string }[] {
+    return this.getAllSkills().map((s) => ({
+      name: s.name,
+      description: s.description,
+    }));
+  }
 
-        const resolvedTools: Tool[] = [];
-        for (const toolName of (skill.tools ?? [])) {
-            const tool = toolRegistry.get(toolName);
-            if (tool && tool.enabled !== false) {
-                resolvedTools.push(tool);
-            }
-        }
+  getAllTools(): AuraTool[] {
+    return Array.from(this.tools.values());
+  }
 
+  getToolDefinitionsForSkill(skillName: string): ToolDefinition[] {
+    const skill = this.getSkill(skillName);
+    if (!skill) return [];
+    return skill.tools
+      .map<ToolDefinition | null>((toolName) => {
+        const tool = this.getTool(toolName);
+        if (!tool) return null;
         return {
-            systemPrompt: skill.systemPrompt,
-            tools: resolvedTools,
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          type: "function" as const,
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+          },
         };
-    }
+      })
+      .filter((t): t is ToolDefinition => t !== null);
+  }
 
-    setEnabled(name: string, enabled: boolean): void {
-        const skill = this._skills.get(name);
-        if (skill) {
-            skill.enabled = enabled;
-        }
+  getActiveToolDefinitions(): ToolDefinition[] {
+    const defs: ToolDefinition[] = [];
+    for (const skill of this.getAllSkills()) {
+      defs.push(...this.getToolDefinitionsForSkill(skill.name));
     }
+    return defs;
+  }
 
-    clear(): void {
-        this._skills.clear();
-    }
+  clear(): void {
+    this.skills.clear();
+    this.tools.clear();
+  }
 }
-
-export const skillRegistry = new SkillRegistry();

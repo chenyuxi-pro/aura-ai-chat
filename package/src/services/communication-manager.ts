@@ -1,743 +1,914 @@
-/* ──────────────────────────────────────────────────────────────────
- *  CommunicationManager — Owns the AI conversation workflow
- *
- *  Extracted from aura-chat.ts to separate UI orchestration from
- *  the multi-step AI interaction pipeline defined in
- *  docs/interaction-flow.md.
- *
- *  Responsibilities:
- *    - Multi-step interactive turn loop
- *    - AI response parsing (JSON command extraction)
- *    - Command handling (LOAD_SKILL_DETAIL, LOAD_TOOLS_SUMMARY, etc.)
- *    - Risky operation confirmation flow (explanation + bubble)
- *    - Communication Protocol prompt block
- * ────────────────────────────────────────────────────────────────── */
-
 import type {
-    Message,
-    AIProvider,
-    AIBehaviorConfig,
-    CallToolResult,
-    Tool,
-} from '../types/index.js';
-import { MessageRole, ActionCancelledError } from '../types/index.js';
-import { store } from '../store/aura-store.js';
-import { promptBuilder } from '../prompt/prompt-builder.js';
-import { skillRegistry } from '../skills/skill-registry.js';
-import type { ActionToolRegistry } from './action-tool-registry.js';
-import type { PendingActionQueue } from './pending-action-queue.js';
-import type { PendingProposal } from '../components/aura-messages/aura-messages.js';
+  AuraConfig,
+  Attachment,
+  ChatMessage,
+  PendingAction,
+  ProviderMessage,
+  ProviderResponse,
+  Skill,
+  ToolCallRequest,
+  ToolDefinition,
+  ToolExecutionContext,
+  AgentStep,
+  AgentStepKindType,
+  AuraTool,
+  ToolResultContent,
+  AuraResource,
+} from "../types/index.js";
+import { AuraEventType, needsConfirmation } from "../types/index.js";
+import type { SkillRegistry } from "../skills/skill-registry.js";
+import type { ToolDispatcher } from "./tool-dispatcher.js";
+import { contentToModelText } from "./tool-dispatcher.js";
+import type { ProviderManager } from "./provider-manager.js";
+import type { HistoryManager } from "./history-manager.js";
+import type { EventBus } from "../logging/event-bus.js";
+import {
+  buildSystemPrompt,
+  type SystemPromptArgs,
+  buildSkillSelectToolDef,
+  buildSkillSwitchToolDef,
+  buildAskUserToolDef,
+  SKILL_SELECT_TOOL_NAME,
+  SKILL_SWITCH_TOOL_NAME,
+  ASK_USER_TOOL_NAME,
+} from "../prompt/prompt-builder.js";
+import { trimToTokenBudget } from "./tokenBudget.js";
 
-// ── Communication Protocol ──────────────────────────────────────
-// Injected into the system prompt to instruct the AI how to
-// communicate structured intents back to Aura.
-
-const COMMUNICATION_PROTOCOL = `## Communication Protocol with Aura
-
-When you need Aura to perform an internal operation, reply with a JSON instruction. You MAY include a brief plain-language explanation before the JSON block for the user to see, but the JSON object MUST be clearly identifiable (either as bare JSON or inside a fenced code block).
-
-For EXECUTE_TOOL_RISKY, place the full user-facing explanation in the \`summary\` field — Aura will display it to the user automatically as Part A of the Confirmation Bubble. You may also write a brief introduction before the JSON block.
-
-### Available Intents
-
-**1) LOAD_SKILL_DETAIL** — A matching skill was found; load its full detail + linked tools
-
-\`\`\`
-{
-  "type": "LOAD_SKILL_DETAIL",
-  "name": "<skill_name>"
-}
-\`\`\`
-
-**2) LOAD_TOOLS_SUMMARY** — No skill matched; load the tools summary for direct lookup
-
-\`\`\`
-{
-  "type": "LOAD_TOOLS_SUMMARY"
-}
-\`\`\`
-
-**3) LOAD_TOOL_DETAIL** — A matching tool was found in the tools summary; load its full detail
-
-\`\`\`
-{
-  "type": "LOAD_TOOL_DETAIL",
-  "name": "<tool_name>"
-}
-\`\`\`
-
-**4) EXECUTE_TOOL** — Non-risky operation; execute the tool immediately
-
-\`\`\`
-{
-  "type": "EXECUTE_TOOL",
-  "name": "<tool_name>",
-  "arguments": { ... }
-}
-\`\`\`
-
-**5) EXECUTE_TOOL_RISKY** — Risky operation; triggers Confirmation Bubble workflow before execution
-
-\`\`\`
-{
-  "type": "EXECUTE_TOOL_RISKY",
-  "name": "<tool_name>",
-  "arguments": { ... },
-  "summary": "<full plain-language explanation: what will change, what is affected, severity>"
-}
-\`\`\`
-
-### Rules
-- Always classify every tool call as risky or non-risky before sending the instruction.
-- For EXECUTE_TOOL_RISKY, the \`summary\` field is mandatory — it must describe what will change, what is affected, and the severity. Aura renders this as the user-visible explanation with a Confirmation Bubble containing a Preview Component and Approve/Cancel buttons.
-- If required arguments are missing, ask the user a concise follow-up question instead of guessing.
-- If Aura reports a missing tool or skill, inform the user directly that the capability is unavailable.
-- Never invoke more than one tool per response.
-- Never invoke a tool that is not in the loaded skill detail or tools summary.`;
-
-// ── Types ───────────────────────────────────────────────────────
-
-/**
- * Canonical Aura intent types per interaction-flow.md §5.
- */
-export type AuraCommand =
-    | { type: 'LOAD_SKILL_DETAIL'; name: string }
-    | { type: 'LOAD_TOOLS_SUMMARY' }
-    | { type: 'LOAD_TOOL_DETAIL'; name: string }
-    | { type: 'EXECUTE_TOOL'; name: string; arguments: Record<string, unknown> }
-    | { type: 'EXECUTE_TOOL_RISKY'; name: string; arguments: Record<string, unknown>; summary: string };
-
-interface AssistantTurnState {
-    toolSummariesLoaded: boolean;
-    loadedToolDetails: Set<string>;
-    loadedSkills: Set<string>;
+export interface OrchestratorCallbacks {
+  onStepStart(step: AgentStep): void;
+  onStepUpdate(step: AgentStep): void;
+  onStreamDelta(delta: string): void;
+  onMessagePushed(): void;
+  requestHumanInTheLoop(step: AgentStep): Promise<HumanInTheLoopResult>;
 }
 
-type CommandHandlingResult = 'continue' | 'stop' | 'cancelled';
-
-// ── Callbacks ───────────────────────────────────────────────────
-
-/**
- * Interface through which CommunicationManager updates AuraChat UI state.
- */
-export interface CommunicationCallbacks {
-    getMessages(): Message[];
-    setMessages(msgs: Message[]): void;
-    appendVisibleMessage(msg: Message): Promise<void>;
-    setStreaming(streaming: boolean): void;
-    setStreamingContent(content: string): void;
-    setPendingProposal(proposal: PendingProposal | null): void;
+export interface HumanInTheLoopResult {
+  approved?: boolean;
+  text?: string;
+  timedOut?: boolean;
 }
 
-// ── CommunicationManager ────────────────────────────────────────
+let stepIdCounter = 0;
+
+function nextStepId(): string {
+  return `step_${Date.now()}_${++stepIdCounter}`;
+}
+
+function createUserMessage(
+  text: string,
+  attachments?: Attachment[],
+): ChatMessage {
+  return {
+    id: `msg_user_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    role: "user",
+    content: text,
+    timestamp: Date.now(),
+    attachments: attachments?.length ? attachments : undefined,
+  };
+}
+
+function createAssistantMessage(content: string | null): ChatMessage {
+  return {
+    id: `msg_asst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    role: "assistant",
+    content: content ?? "",
+    timestamp: Date.now(),
+  };
+}
+
+function createAssistantMessageWithToolCalls(
+  response: ProviderResponse,
+): ChatMessage {
+  return {
+    id: `msg_asst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    role: "assistant",
+    content: response.content ?? "",
+    timestamp: Date.now(),
+    toolCalls: response.toolCalls,
+  };
+}
+
+function createToolResultMessage(
+  toolCall: ToolCallRequest,
+  resultContent: string,
+  resultItems?: ToolResultContent[],
+): ChatMessage {
+  const msg: ChatMessage = {
+    id: `msg_tool_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    role: "tool",
+    content: resultContent,
+    timestamp: Date.now(),
+    toolCallId: toolCall.callId,
+    metadata: {
+      toolId: toolCall.id,
+    },
+  };
+
+  if (resultItems && resultItems.some((c) => c.type !== "text")) {
+    msg.metadata = {
+      ...msg.metadata,
+      showResultInChat: true,
+      resultContent: resultItems,
+    };
+  }
+  return msg;
+}
+
+function createIterationMessage(iterationNumber: number): ChatMessage {
+  return {
+    id: `msg_iter_${iterationNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    role: "assistant",
+    content: "",
+    timestamp: Date.now(),
+    metadata: {
+      isIteration: true,
+      iterationNumber,
+      agentSteps: [],
+    },
+  };
+}
+
+function withPreviewTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | undefined> {
+  return new Promise<T | undefined>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      },
+    );
+  });
+}
+
+const PREVIEW_TIMEOUT_MS = 10_000;
+
+async function buildPendingAction(
+  tool: AuraTool,
+  toolCall: ToolCallRequest,
+): Promise<PendingAction> {
+  const action: PendingAction = {
+    id: toolCall.callId,
+    toolCall,
+    toolName: tool.name,
+    title: tool.title,
+    risk: tool.risk,
+    status: "pending",
+    description: tool.description,
+  };
+
+  if (tool.preview) {
+    try {
+      const previewContent = await withPreviewTimeout(
+        tool.preview.buildContent(toolCall.arguments),
+        PREVIEW_TIMEOUT_MS,
+      );
+      if (previewContent) {
+        action.previewContent = previewContent;
+      }
+    } catch {
+      /* ignore preview errors */
+    }
+  }
+
+  return action;
+}
+
+async function readResources(
+  resources?: AuraResource[],
+): Promise<
+  Array<{ uri: string; name: string; description?: string; text: string }>
+> {
+  if (!resources || resources.length === 0) return [];
+  const results = await Promise.all(
+    resources.map(async (r) => {
+      try {
+        const contents = await r.read();
+        const text =
+          "text" in contents
+            ? contents.text
+            : `[binary: ${contents.mimeType ?? "unknown"}]`;
+        return { uri: r.uri, name: r.name, description: r.description, text };
+      } catch {
+        return {
+          uri: r.uri,
+          name: r.name,
+          description: r.description,
+          text: "[resource read failed]",
+        };
+      }
+    }),
+  );
+
+  return results;
+}
+
+function buildToolContext(
+  config: AuraConfig,
+  historyManager: HistoryManager,
+  resources?: AuraResource[],
+): ToolExecutionContext {
+  return {
+    conversationId: historyManager.getConversation().id,
+    userId: config.identity.appMetadata.userId,
+    appMetadata: config.identity.appMetadata,
+    resources,
+  };
+}
+
+function extractAskUserQuestion(args: Record<string, unknown>): string {
+  const direct = args["question"];
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  for (const value of Object.values(args)) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "Please provide the information needed to continue.";
+}
 
 export class CommunicationManager {
-    constructor(
-        private _actionToolRegistry: ActionToolRegistry,
-        private _pendingActionQueue: PendingActionQueue,
-        private _dispatch: (tool: Tool, args: Record<string, unknown>) => Promise<CallToolResult>,
-        private _callbacks: CommunicationCallbacks,
-    ) { }
+  private activeSkill: Skill | null = null;
+  private abortController: AbortController | null = null;
+  private currentIterationMsg: ChatMessage | null = null;
 
-    // ── Public API ──────────────────────────────────────────────
+  constructor(
+    private readonly skillManager: SkillRegistry,
+    private readonly toolRunner: ToolDispatcher,
+    private readonly providerManager: ProviderManager,
+    private readonly historyManager: HistoryManager,
+    private readonly eventBus: EventBus,
+    private readonly config: AuraConfig,
+    private readonly callbacks: OrchestratorCallbacks,
+  ) { }
 
-    /**
-     * Returns the Communication Protocol block to append to the system prompt.
-     */
-    getCommunicationProtocol(): string {
-        return COMMUNICATION_PROTOCOL;
-    }
+  async run(text: string, attachments?: Attachment[]): Promise<void> {
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+    const { skillManager, toolRunner, historyManager, eventBus, config } = this;
+    const maxIter = config.agent?.maxIterations ?? 10;
+    const loopStart = Date.now();
 
-    /**
-     * Main multi-step interactive turn per interaction-flow.md §2.
-     *
-     * Runs the AI in a loop: each step may produce a plain-text response
-     * (rendered to user) or a structured AuraCommand that triggers
-     * skill/tool loading or execution. The loop runs up to 12 steps
-     * to prevent runaway conversations.
-     */
-    async runInteractiveTurn(
-        provider: AIProvider,
-        config: { behavior: AIBehaviorConfig },
-        activeModel: string,
-    ): Promise<void> {
-        const state: AssistantTurnState = {
-            toolSummariesLoaded: false,
-            loadedToolDetails: new Set<string>(),
-            loadedSkills: new Set<string>(),
-        };
+    const userMsg = createUserMessage(text, attachments);
+    await historyManager.pushAndPersistMessage(userMsg);
+    eventBus.emit(AuraEventType.MessageSent, { message: userMsg });
+    this.callbacks.onMessagePushed();
 
-        try {
-            for (let step = 0; step < 12; step++) {
-                const responseText = await this._runAssistantStep(provider, config, activeModel);
-                const command = this._parseAuraCommand(responseText);
+    eventBus.emit(AuraEventType.AgentLoopStarted, {
+      conversationId: historyManager.getConversation().id,
+    });
 
-                if (!command) {
-                    const text = responseText.trim();
-                    if (!text) {
-                        const emptyMsg: Message = {
-                            id: crypto.randomUUID(),
-                            role: MessageRole.Assistant,
-                            content: 'I could not generate a response. Please try again.',
-                            createdAt: new Date().toISOString(),
-                        };
-                        await this._callbacks.appendVisibleMessage(emptyMsg);
-                        store.emitEvent('ai:message', { message: emptyMsg });
-                        return;
-                    }
+    for (let iteration = 1; iteration <= maxIter; iteration++) {
+      this.checkAborted(signal);
 
-                    const aiMsg: Message = {
-                        id: crypto.randomUUID(),
-                        role: MessageRole.Assistant,
-                        content: text,
-                        createdAt: new Date().toISOString(),
-                    };
-                    await this._callbacks.appendVisibleMessage(aiMsg);
-                    store.emitEvent('ai:message', { message: aiMsg });
-                    return;
-                }
+      const iterMsg = createIterationMessage(iteration);
+      this.currentIterationMsg = iterMsg;
+      historyManager.pushMessage(iterMsg);
+      this.callbacks.onMessagePushed();
 
-                // For EXECUTE_TOOL_RISKY, extract and display any explanation
-                // text the AI wrote around the JSON command (Part A of the
-                // Confirmation Bubble per interaction-flow.md §3).
-                if (command.type === 'EXECUTE_TOOL_RISKY') {
-                    const explanationText = this._extractExplanationText(responseText);
-                    if (explanationText) {
-                        const explainMsg: Message = {
-                            id: crypto.randomUUID(),
-                            role: MessageRole.Assistant,
-                            content: explanationText,
-                            createdAt: new Date().toISOString(),
-                        };
-                        await this._callbacks.appendVisibleMessage(explainMsg);
-                    }
-                }
+      const resources = config.agent?.resources;
+      const resourceContents = await readResources(resources);
 
-                const commandResult = await this._handleAuraCommand(command, state);
-                if (commandResult === 'continue') {
-                    continue;
-                }
-                return;
-            }
+      const { tools, systemPromptArgs } =
+        this.resolveToolSet(resourceContents);
 
-            const limitMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Error,
-                content: 'I reached an internal planning limit for this turn. Please try a more specific request.',
-                createdAt: new Date().toISOString(),
-            };
-            const msgs = this._callbacks.getMessages();
-            this._callbacks.setMessages([...msgs, limitMsg]);
-        } catch (err) {
-            console.error('[CommunicationManager] AI request failed:', err);
-            if ((err as Error).name !== 'AbortError') {
-                store.emitEvent('error', { message: 'AI request failed', error: String(err) });
-                const errorMsg: Message = {
-                    id: crypto.randomUUID(),
-                    role: MessageRole.Error,
-                    content: `Sorry, something went wrong: ${(err as Error).message || 'Unknown error'}`,
-                    createdAt: new Date().toISOString(),
-                };
-                const msgs = this._callbacks.getMessages();
-                this._callbacks.setMessages([...msgs, errorMsg]);
-            } else {
-                store.emitEvent('ai:stream:cancel', {});
-            }
-        } finally {
-            const msgs = this._callbacks.getMessages().filter(m => !this._isInternalMessage(m));
-            this._callbacks.setMessages(msgs);
-            this._callbacks.setStreaming(false);
-            this._callbacks.setStreamingContent('');
+      const systemPrompt = buildSystemPrompt({
+        ...systemPromptArgs,
+        agenticMode: true,
+      });
+
+      const providerMessages = this.buildProviderMessages(systemPrompt);
+      const trimmed = config.agent?.maxContextTokens
+        ? trimToTokenBudget(providerMessages, {
+          maxTokens: config.agent.maxContextTokens,
+        })
+        : providerMessages;
+
+      const thinkStep = await this.emitStep(
+        iteration,
+        "thinking",
+        "Reasoning...",
+      );
+      let response: ProviderResponse;
+      try {
+        response = await this.callProvider(trimmed, tools, signal);
+      } catch (err) {
+        if (thinkStep) await this.failStep(thinkStep, String(err));
+        throw err;
+      }
+      if (thinkStep) await this.completeStep(thinkStep);
+
+      if (response.toolCalls.length === 0) {
+        const assistantMsg = createAssistantMessage(response.content);
+        await historyManager.pushAndPersistMessage(assistantMsg);
+        eventBus.emit(AuraEventType.MessageReceived, {
+          message: assistantMsg,
+        });
+        this.callbacks.onMessagePushed();
+        eventBus.emit(AuraEventType.AgentLoopCompleted, {
+          conversationId: historyManager.getConversation().id,
+          stats: {
+            iterations: iteration,
+            durationMs: Date.now() - loopStart,
+          },
+        });
+        return;
+      }
+
+      const assistantMsg = createAssistantMessageWithToolCalls(response);
+      await historyManager.pushAndPersistMessage(assistantMsg);
+      this.callbacks.onMessagePushed();
+
+      let shouldContinue = true;
+      for (const toolCall of response.toolCalls) {
+        this.checkAborted(signal);
+
+        if (
+          toolCall.id === SKILL_SELECT_TOOL_NAME ||
+          toolCall.id === SKILL_SWITCH_TOOL_NAME
+        ) {
+          const toolArgs = toolCall.arguments as Record<string, unknown>;
+          const skillName = String(
+            toolArgs.skillName ?? toolArgs.skill_name ?? "none",
+          );
+          this.activeSkill =
+            skillName === "none"
+              ? null
+              : (skillManager.getSkill(skillName) ?? null);
+          eventBus.emit(AuraEventType.SkillSelected, {
+            skillName: skillName === "none" ? null : skillName,
+          });
+          const step = await this.emitStep(
+            iteration,
+            "skill-select",
+            `Selected skill "${skillName}"`,
+          );
+          await this.completeStep(step);
+
+          const resultMsg = createToolResultMessage(
+            toolCall,
+            `Skill "${skillName}" activated.`,
+          );
+          await historyManager.pushAndPersistMessage(resultMsg);
+          this.callbacks.onMessagePushed();
+          continue;
         }
-    }
 
-    // ── AI Streaming Step ───────────────────────────────────────
+        if (toolCall.id === ASK_USER_TOOL_NAME) {
+          const question = extractAskUserQuestion(
+            toolCall.arguments as Record<string, unknown>,
+          );
+          let askStep: AgentStep | null = null;
+          askStep = await this.emitStep(
+            iteration,
+            "ask-user",
+            question,
+            toolCall,
+          );
+          await this.updateStep(askStep, {
+            status: "waiting",
+            userInputQuestion: question,
+          });
 
-    private async _runAssistantStep(
-        provider: AIProvider,
-        config: { behavior: AIBehaviorConfig },
-        activeModel: string,
-    ): Promise<string> {
-        this._callbacks.setStreaming(true);
-        this._callbacks.setStreamingContent('');
-        store.emitEvent('ai:stream:start', {});
+          const hitlResult = askStep
+            ? await this.callbacks.requestHumanInTheLoop(askStep)
+            : { text: "" };
 
-        try {
-            const systemPrompt = await promptBuilder.build(
-                config.behavior,
-                this._buildFullPromptBlock(),
+          if (hitlResult.timedOut) {
+            if (askStep) {
+              askStep.status = "timed-out";
+              askStep.summary = "Timed out waiting for user response";
+              askStep.durationMs = Date.now() - askStep.timestamp;
+              await this.updateIterationMessage(askStep);
+              this.callbacks.onStepUpdate({ ...askStep });
+            }
+            const timeoutMsg = createToolResultMessage(
+              toolCall,
+              JSON.stringify({
+                timedOut: true,
+                message:
+                  "The request timed out while waiting for user input. " +
+                  "Please try again when you are back.",
+              }),
             );
+            await historyManager.pushAndPersistMessage(timeoutMsg);
+            this.callbacks.onMessagePushed();
 
-            const request = {
-                systemPrompt,
-                messages: this._callbacks.getMessages(),
-                model: activeModel,
-                parameters: {
-                    temperature: config.behavior.temperature,
-                    maxTokens: config.behavior.maxTokens,
-                    topP: config.behavior.topP,
-                },
-            };
+            shouldContinue = false;
+            break;
+          }
 
-            const stream = await provider.sendMessage(request);
-            let content = '';
-            for await (const chunk of stream) {
-                if (chunk.done) break;
-                content += chunk.delta;
-                this._callbacks.setStreamingContent(content);
-            }
-            return content;
-        } finally {
-            this._callbacks.setStreaming(false);
-            this._callbacks.setStreamingContent('');
-            store.emitEvent('ai:stream:end', {});
-        }
-    }
-
-    /**
-     * Combines the action tool registry block with the Communication Protocol.
-     */
-    private _buildFullPromptBlock(): string {
-        const toolBlock = this._actionToolRegistry.buildSystemPromptBlock();
-        const parts = [toolBlock, COMMUNICATION_PROTOCOL].filter(Boolean);
-        return parts.join('\n\n');
-    }
-
-    // ── Command Parsing ─────────────────────────────────────────
-
-    /**
-     * Parse AI response into an AuraCommand using the 5 canonical intents
-     * defined in interaction-flow.md §5.
-     *
-     * Also supports legacy snake_case intents for backward compatibility.
-     */
-    private _parseAuraCommand(content: string): AuraCommand | null {
-        const payload = this._extractJsonPayload(content);
-        if (!payload) return null;
-
-        const rawType = typeof payload.type === 'string' ? payload.type.trim() : '';
-        const name = typeof payload.name === 'string' ? payload.name.trim() : '';
-        const args = this._asRecord(payload.arguments);
-        const summary = typeof payload.summary === 'string' ? payload.summary : '';
-
-        // Normalize legacy snake_case to canonical UPPER_CASE intents
-        const type = this._normalizeIntentType(rawType);
-
-        switch (type) {
-            case 'LOAD_SKILL_DETAIL':
-                return name ? { type: 'LOAD_SKILL_DETAIL', name } : null;
-
-            case 'LOAD_TOOLS_SUMMARY':
-                return { type: 'LOAD_TOOLS_SUMMARY' };
-
-            case 'LOAD_TOOL_DETAIL':
-                return name ? { type: 'LOAD_TOOL_DETAIL', name } : null;
-
-            case 'EXECUTE_TOOL':
-                return name ? { type: 'EXECUTE_TOOL', name, arguments: args } : null;
-
-            case 'EXECUTE_TOOL_RISKY':
-                return name ? { type: 'EXECUTE_TOOL_RISKY', name, arguments: args, summary } : null;
-
-            default:
-                return null;
-        }
-    }
-
-    /**
-     * Maps legacy snake_case intent names to canonical UPPER_CASE intents.
-     */
-    private _normalizeIntentType(type: string): string {
-        const LEGACY_MAP: Record<string, string> = {
-            'get_skill_detail': 'LOAD_SKILL_DETAIL',
-            'list_tools': 'LOAD_TOOLS_SUMMARY',
-            'get_tool_detail': 'LOAD_TOOL_DETAIL',
-            'tool_call': 'EXECUTE_TOOL',
-            'action_proposal': 'EXECUTE_TOOL_RISKY',
-        };
-        return LEGACY_MAP[type] ?? type;
-    }
-
-    private _extractJsonPayload(content: string): Record<string, unknown> | null {
-        const trimmed = content.trim();
-        if (!trimmed) return null;
-
-        const candidates: string[] = [trimmed];
-
-        // Try fenced code blocks first (```json ... ``` or ``` ... ```)
-        const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/i);
-        if (codeBlockMatch?.[1]) {
-            candidates.push(codeBlockMatch[1].trim());
-        }
-
-        // Try to find a JSON object embedded in surrounding prose text.
-        // This handles the common case where the AI writes explanation
-        // text around the JSON command.
-        const braceStart = trimmed.indexOf('{');
-        const braceEnd = trimmed.lastIndexOf('}');
-        if (braceStart !== -1 && braceEnd > braceStart) {
-            candidates.push(trimmed.substring(braceStart, braceEnd + 1));
-        }
-
-        for (const candidate of candidates) {
-            try {
-                const parsed = JSON.parse(candidate);
-                if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-                    return parsed as Record<string, unknown>;
-                }
-            } catch {
-                // Ignore malformed JSON candidate.
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Extracts explanation text from an AI response that also contains a
-     * JSON command. Strips fenced code blocks and bare JSON objects,
-     * returning only the prose the AI wrote for the user to see.
-     */
-    private _extractExplanationText(content: string): string {
-        // Remove fenced code blocks
-        let text = content.replace(/```(?:json)?\s*\n?[\s\S]*?\n?```/gi, '');
-
-        // Remove bare JSON objects
-        const braceStart = text.indexOf('{');
-        const braceEnd = text.lastIndexOf('}');
-        if (braceStart !== -1 && braceEnd > braceStart) {
-            const jsonCandidate = text.substring(braceStart, braceEnd + 1);
-            try {
-                JSON.parse(jsonCandidate);
-                text = text.substring(0, braceStart) + text.substring(braceEnd + 1);
-            } catch {
-                // Not valid JSON — keep text as-is
-            }
-        }
-
-        return text.trim();
-    }
-
-    // ── Command Handling ────────────────────────────────────────
-
-    private async _handleAuraCommand(command: AuraCommand, state: AssistantTurnState): Promise<CommandHandlingResult> {
-        switch (command.type) {
-            case 'LOAD_SKILL_DETAIL':
-                return this._handleLoadSkillDetail(command, state);
-            case 'LOAD_TOOLS_SUMMARY':
-                return this._handleLoadToolsSummary(state);
-            case 'LOAD_TOOL_DETAIL':
-                return this._handleLoadToolDetail(command, state);
-            case 'EXECUTE_TOOL':
-                return this._handleExecuteTool(command, state);
-            case 'EXECUTE_TOOL_RISKY':
-                return this._handleExecuteToolRisky(command, state);
-            default:
-                return 'stop';
-        }
-    }
-
-    /**
-     * LOAD_SKILL_DETAIL — Load full skill detail + linked tools into context.
-     * Per interaction-flow.md §2 Step 1.
-     */
-    private async _handleLoadSkillDetail(
-        command: Extract<AuraCommand, { type: 'LOAD_SKILL_DETAIL' }>,
-        state: AssistantTurnState,
-    ): Promise<CommandHandlingResult> {
-        const skill = skillRegistry.get(command.name);
-        const detail = skillRegistry.getDetail(command.name);
-        if (!skill || !detail) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'LOAD_SKILL_DETAIL',
-                message: `Skill "${command.name}" not found or disabled.`,
-                availableSkills: skillRegistry.getSummaries(),
+          const answer = hitlResult.text ?? "";
+          if (askStep) {
+            await this.completeStep(askStep, answer);
+            const userId =
+              config.identity.appMetadata?.userId ?? "unknown";
+            const timestamp = new Date().toLocaleString();
+            await this.updateStep(askStep, {
+              summary: `User ${userId} replied at ${timestamp}`,
             });
-            return 'continue';
+          }
+
+          const toolResultMsg = createToolResultMessage(toolCall, answer);
+          await historyManager.pushAndPersistMessage(toolResultMsg);
+          this.callbacks.onMessagePushed();
+          continue;
         }
 
-        state.loadedSkills.add(skill.name);
-        for (const tool of detail.tools) {
-            state.loadedToolDetails.add(tool.name);
+        const tool = skillManager.getTool(toolCall.id);
+        if (!tool) {
+          const errorResult = createToolResultMessage(
+            toolCall,
+            JSON.stringify({
+              error: `Tool "${toolCall.id}" is not registered.`,
+            }),
+          );
+          await historyManager.pushAndPersistMessage(errorResult);
+          this.callbacks.onMessagePushed();
+          continue;
         }
 
-        this._appendInternalMessage({
-            type: 'skill_detail_loaded',
-            skill: {
-                name: skill.name,
-                title: skill.title,
-                description: skill.description,
-                systemPrompt: detail.systemPrompt,
-            },
-            tools: detail.tools.map(t => this._serializeTool(t)),
+        const toolStep = await this.emitStep(
+          iteration,
+          "tool-call",
+          `Calling ${tool.name}...`,
+          toolCall,
+        );
+
+        if (needsConfirmation(tool)) {
+          const pendingAction = await buildPendingAction(tool, toolCall);
+          if (toolStep) {
+            await this.updateStep(toolStep, {
+              status: "waiting",
+              type: "approval",
+              summary: `Awaiting approval for ${tool.name}`,
+              pendingAction,
+            });
+          }
+
+          const hitlResult = toolStep
+            ? await this.callbacks.requestHumanInTheLoop(toolStep)
+            : { approved: true };
+
+          if (hitlResult.timedOut) {
+            if (toolStep?.pendingAction) {
+              toolStep.pendingAction = {
+                ...toolStep.pendingAction,
+                status: "timed-out",
+              };
+            }
+            if (toolStep) {
+              toolStep.status = "timed-out";
+              toolStep.summary = `Timed out waiting for approval of ${tool.name}`;
+              toolStep.durationMs = Date.now() - toolStep.timestamp;
+              await this.updateIterationMessage(toolStep);
+              this.callbacks.onStepUpdate({ ...toolStep });
+            }
+            const timeoutResult = createToolResultMessage(
+              toolCall,
+              JSON.stringify({
+                timedOut: true,
+                message: `Confirmation for "${tool.name}" timed out. Please try again when you are back.`,
+              }),
+            );
+            await historyManager.pushAndPersistMessage(timeoutResult);
+            this.callbacks.onMessagePushed();
+            shouldContinue = false;
+            break;
+          }
+
+          const approved = hitlResult.approved ?? true;
+
+          if (toolStep?.pendingAction) {
+            toolStep.pendingAction = {
+              ...toolStep.pendingAction,
+              status: approved ? "executing" : "rejected",
+            };
+          }
+
+          if (!approved) {
+            const rejResult = createToolResultMessage(
+              toolCall,
+              JSON.stringify({
+                rejected: true,
+                message: `User rejected "${tool.name}".`,
+              }),
+            );
+            await historyManager.pushAndPersistMessage(rejResult);
+            this.callbacks.onMessagePushed();
+            if (toolStep) {
+              const userId =
+                config.identity.appMetadata?.userId ?? "unknown";
+              const timestamp = new Date().toLocaleString();
+              toolStep.status = "rejected";
+              toolStep.summary = `Skip ${tool.name} - rejected by ${userId} at ${timestamp}`;
+              toolStep.durationMs = Date.now() - toolStep.timestamp;
+              toolStep.detail = `User "${userId}" rejected "${tool.name}" at ${timestamp}`;
+              await this.updateIterationMessage(toolStep);
+              this.callbacks.onStepUpdate({ ...toolStep });
+            }
+            continue;
+          }
+        }
+
+        if (toolStep) {
+          const userId = config.identity.appMetadata?.userId ?? "unknown";
+          const timestamp = new Date().toLocaleString();
+          await this.updateStep(toolStep, {
+            status: "running",
+            summary: `Executing ${tool.name} - approved by ${userId} at ${timestamp}`,
+          });
+        }
+
+        const ctx = buildToolContext(config, historyManager, resources);
+        const result = await toolRunner.execute(toolCall, ctx);
+        eventBus.emit(AuraEventType.ToolCalled, {
+          entry: result.logEntry,
         });
 
-        store.emitEvent('skill:activated', { skillName: skill.name });
-        return 'continue';
-    }
+        if (toolStep) {
+          if (!result.logEntry?.error) {
+            const userId =
+              config.identity.appMetadata?.userId ?? "unknown";
+            const approvedAt = toolStep.pendingAction
+              ? ` - approved by ${userId} at ${new Date().toLocaleString()}`
+              : "";
+            await this.updateStep(toolStep, {
+              summary: `Executed ${tool.name}${approvedAt}`,
+            });
+          } else {
+            await this.failStep(
+              toolStep,
+              `Error: ${String(result.logEntry?.error ?? "Unknown error")}`,
+            );
+          }
+        }
 
-    /**
-     * LOAD_TOOLS_SUMMARY — Load the tools summary for direct lookup.
-     * Per interaction-flow.md §2 Step 2.
-     */
-    private async _handleLoadToolsSummary(state: AssistantTurnState): Promise<CommandHandlingResult> {
-        const tools = this._actionToolRegistry.getAll().filter(t => t.enabled !== false);
-        state.toolSummariesLoaded = true;
+        const modelText = contentToModelText(result.content);
+        const toolResultMsg = createToolResultMessage(
+          toolCall,
+          modelText,
+          result.content,
+        );
+        await historyManager.pushAndPersistMessage(toolResultMsg);
+        this.callbacks.onMessagePushed();
+        if (toolStep) await this.completeStep(toolStep, modelText);
+      }
 
-        this._appendInternalMessage({
-            type: 'tools_summary_loaded',
-            tools: tools.map(t => ({
-                name: t.name,
-                title: t.title,
-                description: t.description,
-                risk: t.risk ?? 'query',
-            })),
+      if (!shouldContinue) {
+        if (this.currentIterationMsg) {
+          await this.historyManager.persistExistingMessage(
+            this.currentIterationMsg.id,
+          );
+        }
+        this.currentIterationMsg = null;
+        const timeoutMsg = createAssistantMessage(
+          "This action was cancelled as no response was received in time. " +
+          "Please try again when you're ready.",
+        );
+        await historyManager.pushAndPersistMessage(timeoutMsg);
+        eventBus.emit(AuraEventType.MessageReceived, {
+          message: timeoutMsg,
         });
-
-        return 'continue';
-    }
-
-    /**
-     * LOAD_TOOL_DETAIL — Load full tool detail before execution.
-     * Per interaction-flow.md §2 Step 2: AI must load tool detail before invoking.
-     */
-    private async _handleLoadToolDetail(
-        command: Extract<AuraCommand, { type: 'LOAD_TOOL_DETAIL' }>,
-        state: AssistantTurnState,
-    ): Promise<CommandHandlingResult> {
-        if (!state.toolSummariesLoaded && state.loadedSkills.size === 0) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'LOAD_TOOL_DETAIL',
-                message: 'You must send LOAD_TOOLS_SUMMARY first, or load a skill that includes this tool.',
-            });
-            return 'continue';
-        }
-
-        const tool = this._actionToolRegistry.get(command.name);
-        if (!tool || tool.enabled === false) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'LOAD_TOOL_DETAIL',
-                message: `Tool "${command.name}" not found or disabled.`,
-            });
-            return 'continue';
-        }
-
-        state.loadedToolDetails.add(tool.name);
-        this._appendInternalMessage({
-            type: 'tool_detail_loaded',
-            tool: this._serializeTool(tool),
+        this.callbacks.onMessagePushed();
+        eventBus.emit(AuraEventType.AgentLoopCompleted, {
+          conversationId: historyManager.getConversation().id,
+          stats: {
+            iterations: iteration,
+            durationMs: Date.now() - loopStart,
+          },
         });
+        return;
+      }
 
-        return 'continue';
+      if (this.currentIterationMsg) {
+        await this.historyManager.persistExistingMessage(
+          this.currentIterationMsg.id,
+        );
+      }
+      this.currentIterationMsg = null;
     }
 
-    /**
-     * EXECUTE_TOOL — Non-risky operation. Execute immediately.
-     * Per interaction-flow.md §2 "Tool Execution Decision" → Non-Risky.
-     */
-    private async _handleExecuteTool(
-        command: Extract<AuraCommand, { type: 'EXECUTE_TOOL' }>,
-        state: AssistantTurnState,
-    ): Promise<CommandHandlingResult> {
-        const tool = this._actionToolRegistry.get(command.name);
-        if (!tool || tool.enabled === false) {
-            const msg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Assistant,
-                content: `Sorry, the requested capability is unavailable — tool "${command.name}" is not registered.`,
-                createdAt: new Date().toISOString(),
-            };
-            await this._callbacks.appendVisibleMessage(msg);
-            store.emitEvent('tool:failed', { toolName: command.name, error: 'Tool not found' });
-            return 'stop';
-        }
+    const limitMsg = createAssistantMessage(
+      "I've reached the maximum number of reasoning steps. " +
+      "Here's what I've accomplished so far - please let me know " +
+      "if you'd like me to continue.",
+    );
+    await historyManager.pushAndPersistMessage(limitMsg);
+    eventBus.emit(AuraEventType.MessageReceived, { message: limitMsg });
+    this.callbacks.onMessagePushed();
+    eventBus.emit(AuraEventType.AgentLoopCompleted, {
+      conversationId: historyManager.getConversation().id,
+      stats: { iterations: maxIter, durationMs: Date.now() - loopStart },
+    });
+  }
 
-        if (!state.loadedToolDetails.has(tool.name)) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'EXECUTE_TOOL',
-                message: `Tool detail for "${tool.name}" has not been loaded. Send LOAD_TOOL_DETAIL or LOAD_SKILL_DETAIL first.`,
-            });
-            return 'continue';
-        }
+  cancel(): void {
+    this.abortController?.abort();
+  }
 
-        const validation = this._actionToolRegistry.validateArgs(tool.name, command.arguments);
-        if (!validation.valid) {
-            this._appendInternalMessage({
-                type: 'tool_validation_error',
-                toolName: tool.name,
-                errors: validation.errors,
-            });
-            return 'continue';
-        }
+  reset(): void {
+    this.activeSkill = null;
+    this.currentIterationMsg = null;
+    this.cancel();
+  }
 
-        // Non-risky: execute immediately via dispatcher
-        try {
-            const result = await this._dispatch(tool, command.arguments);
-            this._appendToolResultMessage(tool.name, result);
-            return 'continue';
-        } catch (err) {
-            this._appendInternalMessage({
-                type: 'tool_error',
-                toolName: tool.name,
-                error: err instanceof Error ? err.message : String(err),
-            });
-            return 'continue';
-        }
+  private resolveToolSet(
+    resourceContents?: Array<{
+      uri: string;
+      name: string;
+      description?: string;
+      text: string;
+    }>,
+  ): {
+    tools: ToolDefinition[];
+    systemPromptArgs: SystemPromptArgs;
+  } {
+    const { skillManager, config } = this;
+    const allSkills = skillManager.getAllSkills();
+    const askUserTool = buildAskUserToolDef();
+
+    if (this.activeSkill) {
+      const skillTools = skillManager.getToolDefinitionsForSkill(
+        this.activeSkill.name,
+      );
+      const switchTool = buildSkillSwitchToolDef(
+        allSkills.map((s) => s.name),
+      );
+      return {
+        tools: [...skillTools, switchTool, askUserTool],
+        systemPromptArgs: {
+          appSystemPrompt: config.agent?.appSystemPrompt,
+          resourceContents,
+          activeSkill: this.activeSkill,
+          additionalSafetyInstructions:
+            config.agent?.additionalSafetyInstructions,
+        },
+      };
     }
 
-    /**
-     * EXECUTE_TOOL_RISKY — Risky operation. Shows Confirmation Bubble.
-     * Per interaction-flow.md §3 "Risky Operation Confirmation Flow".
-     */
-    private async _handleExecuteToolRisky(
-        command: Extract<AuraCommand, { type: 'EXECUTE_TOOL_RISKY' }>,
-        state: AssistantTurnState,
-    ): Promise<CommandHandlingResult> {
-        const tool = this._actionToolRegistry.get(command.name);
-        if (!tool || tool.enabled === false) {
-            const msg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Assistant,
-                content: `Sorry, the requested capability is unavailable — tool "${command.name}" is not registered.`,
-                createdAt: new Date().toISOString(),
-            };
-            await this._callbacks.appendVisibleMessage(msg);
-            store.emitEvent('tool:failed', { toolName: command.name, error: 'Tool not found' });
-            return 'stop';
-        }
+    if (allSkills.length > 0) {
+      const selectTool = buildSkillSelectToolDef(
+        allSkills.map((s) => s.name),
+      );
+      return {
+        tools: [selectTool, askUserTool],
+        systemPromptArgs: {
+          appSystemPrompt: config.agent?.appSystemPrompt,
+          resourceContents,
+          skills: skillManager.getSkillsSummary(),
+          additionalSafetyInstructions:
+            config.agent?.additionalSafetyInstructions,
+        },
+      };
+    }
 
-        if (!state.loadedToolDetails.has(tool.name)) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'EXECUTE_TOOL_RISKY',
-                message: `Tool detail for "${tool.name}" has not been loaded. Send LOAD_TOOL_DETAIL or LOAD_SKILL_DETAIL first.`,
-            });
-            return 'continue';
-        }
+    return {
+      tools: [...skillManager.getActiveToolDefinitions(), askUserTool],
+      systemPromptArgs: {
+        appSystemPrompt: config.agent?.appSystemPrompt,
+        resourceContents,
+        additionalSafetyInstructions:
+          config.agent?.additionalSafetyInstructions,
+      },
+    };
+  }
 
-        const validation = this._actionToolRegistry.validateArgs(tool.name, command.arguments);
-        if (!validation.valid) {
-            this._appendInternalMessage({
-                type: 'tool_validation_error',
-                toolName: tool.name,
-                errors: validation.errors,
-            });
-            return 'continue';
-        }
+  private buildProviderMessages(systemPrompt: string): ProviderMessage[] {
+    const msgs: ProviderMessage[] = [
+      { role: "system", content: systemPrompt },
+    ];
+    for (const m of this.historyManager.getMessages()) {
+      if (m.metadata?.["isIteration"]) continue;
 
-        if (this._pendingActionQueue.hasPending()) {
-            this._appendInternalMessage({
-                type: 'command_error',
-                source: 'EXECUTE_TOOL_RISKY',
-                message: 'Another action is already pending user confirmation. Wait for the user to respond.',
-            });
-            return 'continue';
-        }
+      const pm: ProviderMessage = {
+        role: m.role as ProviderMessage["role"],
+        content: m.content,
+      };
+      if (m.toolCalls && m.toolCalls.length > 0) {
+        pm.toolCalls = m.toolCalls;
+      }
+      if (m.toolCallId) {
+        pm.toolCallId = m.toolCallId;
+        pm.name =
+          (m.metadata?.["toolId"] as string | undefined) ?? undefined;
+      }
+      msgs.push(pm);
+    }
+    return msgs;
+  }
 
-        const summary = command.summary?.trim()
-            || `Execute ${tool.label || tool.title || tool.name}.`;
+  private async callProvider(
+    messages: ProviderMessage[],
+    tools: ToolDefinition[],
+    signal: AbortSignal,
+  ): Promise<ProviderResponse> {
+    const { providerManager, config } = this;
+    const useStreaming =
+      config.agent?.enableStreaming && providerManager.supportsStreaming();
 
-        // Show Confirmation Bubble
-        this._callbacks.setPendingProposal({ tool, args: command.arguments, summary });
-        store.emitEvent('action:proposed', { toolName: tool.name, arguments: command.arguments, summary });
+    const request = {
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+    };
+    if (useStreaming) {
+      return this.streamProvider(request, signal);
+    }
 
-        try {
-            const result = await this._dispatch(tool, command.arguments);
-            this._callbacks.setPendingProposal(null);
+    return providerManager.sendMessages(request);
+  }
 
-            store.emitEvent('action:succeeded', {
-                toolName: tool.name,
-                arguments: command.arguments,
-                result,
-            });
+  private async streamProvider(
+    request: { messages: ProviderMessage[]; tools?: ToolDefinition[] },
+    signal: AbortSignal,
+  ): Promise<ProviderResponse> {
+    const { providerManager } = this;
+    let fullContent = "";
+    const toolCallsMap = new Map<
+      number,
+      { callId: string; id: string; arguments: string }
+    >();
 
-            this._appendToolResultMessage(tool.name, result);
-            return 'continue';
-        } catch (err) {
-            this._callbacks.setPendingProposal(null);
-
-            if (err instanceof ActionCancelledError) {
-                store.emitEvent('action:cancelled', {
-                    toolName: tool.name,
-                    arguments: command.arguments,
-                });
-                return 'cancelled';
+    const stream = providerManager.streamMessages(request);
+    for await (const chunk of stream) {
+      if (signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (chunk.contentDelta) {
+        fullContent += chunk.contentDelta;
+        this.callbacks.onStreamDelta(chunk.contentDelta);
+      }
+      if (chunk.toolCallDeltas) {
+        for (let i = 0; i < chunk.toolCallDeltas.length; i++) {
+          const delta = chunk.toolCallDeltas[i];
+          if (!delta) continue;
+          const existing = toolCallsMap.get(i);
+          if (existing) {
+            if (delta.arguments) {
+              const argStr =
+                typeof delta.arguments === "string"
+                  ? delta.arguments
+                  : JSON.stringify(delta.arguments);
+              existing.arguments += argStr;
             }
-
-            store.emitEvent('action:failed', {
-                toolName: tool.name,
-                arguments: command.arguments,
-                error: err instanceof Error ? err.message : String(err),
+          } else {
+            toolCallsMap.set(i, {
+              callId: delta.callId ?? `call_${Date.now()}_${i}`,
+              id: delta.id ?? "",
+              arguments:
+                typeof delta.arguments === "string"
+                  ? delta.arguments
+                  : delta.arguments
+                    ? JSON.stringify(delta.arguments)
+                    : "",
             });
-
-            this._appendInternalMessage({
-                type: 'tool_error',
-                toolName: tool.name,
-                error: err instanceof Error ? err.message : String(err),
-            });
-            return 'continue';
+          }
         }
-    }
-
-    // ── Message Helpers ─────────────────────────────────────────
-
-    private _appendToolResultMessage(toolName: string, result: CallToolResult): void {
-        const resultText = result.content
-            .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-            .map(c => c.text)
-            .join('\n');
-
-        const resultMsg: Message = {
-            id: crypto.randomUUID(),
-            role: MessageRole.System,
-            content: result.isError
-                ? `Tool error: ${resultText}`
-                : `Tool result: ${resultText}`,
-            createdAt: new Date().toISOString(),
-            metadata: { internal: true, type: 'tool_result', toolName, result },
-        };
-
-        const msgs = this._callbacks.getMessages();
-        this._callbacks.setMessages([...msgs, resultMsg]);
-    }
-
-    private _appendInternalMessage(payload: Record<string, unknown>): void {
-        const msg: Message = {
-            id: crypto.randomUUID(),
-            role: MessageRole.System,
-            content: JSON.stringify(payload, null, 2),
-            createdAt: new Date().toISOString(),
-            metadata: { internal: true, type: payload.type ?? 'internal' },
-        };
-
-        const msgs = this._callbacks.getMessages();
-        this._callbacks.setMessages([...msgs, msg]);
-    }
-
-    private _isInternalMessage(message: Message): boolean {
-        if (!message.metadata) return false;
-        return (message.metadata as Record<string, unknown>).internal === true;
-    }
-
-    private _serializeTool(tool: Tool): Record<string, unknown> {
-        return {
-            name: tool.name,
-            title: tool.title,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-            risk: tool.risk ?? 'query',
-            label: tool.label ?? tool.title ?? tool.name,
-        };
-    }
-
-    private _asRecord(value: unknown): Record<string, unknown> {
-        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-            return value as Record<string, unknown>;
+      }
+      if (chunk.tool_calls?.length) {
+        for (let i = 0; i < chunk.tool_calls.length; i++) {
+          const toolCall = chunk.tool_calls[i];
+          toolCallsMap.set(i, {
+            callId: toolCall.callId,
+            id: toolCall.id,
+            arguments: JSON.stringify(toolCall.arguments ?? {}),
+          });
         }
-        return {};
+      }
     }
+
+    const toolCalls: ToolCallRequest[] = [];
+    for (const [, tc] of toolCallsMap) {
+      let parsedArgs: Record<string, unknown> = {};
+      try {
+        parsedArgs = tc.arguments ? JSON.parse(tc.arguments) : {};
+      } catch {
+        parsedArgs = { _raw: tc.arguments };
+      }
+      toolCalls.push({
+        callId: tc.callId,
+        id: tc.id,
+        arguments: parsedArgs,
+      });
+    }
+    return {
+      content: fullContent || null,
+      toolCalls,
+    };
+  }
+
+  private async updateIterationMessage(step: AgentStep): Promise<void> {
+    if (!this.currentIterationMsg?.metadata) return;
+    const steps = this.currentIterationMsg.metadata[
+      "agentSteps"
+    ] as AgentStep[];
+    const nextStep: AgentStep = {
+      ...step,
+      pendingAction: step.pendingAction
+        ? { ...step.pendingAction }
+        : undefined,
+      toolArgs: step.toolArgs ? { ...step.toolArgs } : undefined,
+    };
+    const existingIndex = steps.findIndex((s) => s.id === step.id);
+    if (existingIndex >= 0) {
+      steps[existingIndex] = nextStep;
+    } else {
+      steps.push(nextStep);
+    }
+    const newMetadata = {
+      ...this.currentIterationMsg.metadata,
+      agentSteps: [...(steps ?? [])],
+    };
+    this.currentIterationMsg.metadata = newMetadata;
+    this.historyManager?.replaceMessage(this.currentIterationMsg.id, {
+      metadata: newMetadata,
+    });
+  }
+
+  private async emitStep(
+    iteration: number,
+    type: AgentStepKindType,
+    summary: string,
+    toolCall?: ToolCallRequest,
+  ): Promise<AgentStep> {
+    const step: AgentStep = {
+      id: nextStepId(),
+      iteration,
+      type,
+      summary,
+      status: "running",
+      timestamp: Date.now(),
+      toolName: toolCall?.id,
+      toolArgs: toolCall?.arguments,
+    };
+    await this.updateIterationMessage(step);
+    this.callbacks.onStepStart(step);
+    this.eventBus.emit(AuraEventType.AgentStepStarted, { step });
+    return step;
+  }
+
+  private async updateStep(
+    step: AgentStep,
+    updates: Partial<
+      Pick<
+        AgentStep,
+        | "status"
+        | "summary"
+        | "type"
+        | "detail"
+        | "pendingAction"
+        | "userInputQuestion"
+      >
+    >,
+  ): Promise<void> {
+    Object.assign(step, updates);
+    await this.updateIterationMessage(step);
+    this.callbacks.onStepUpdate({ ...step });
+  }
+
+  private async completeStep(
+    step: AgentStep,
+    result?: string,
+  ): Promise<void> {
+    step.status = "complete";
+    step.durationMs = Date.now() - step.timestamp;
+    if (result !== undefined) step.toolResult = result;
+    if (step.pendingAction) {
+      step.pendingAction = { ...step.pendingAction, status: "completed" };
+    }
+    await this.updateIterationMessage(step);
+    this.callbacks.onStepUpdate({ ...step });
+    this.eventBus.emit(AuraEventType.AgentStepCompleted, { step });
+  }
+
+  private async failStep(
+    step: AgentStep,
+    error: string,
+  ): Promise<void> {
+    step.status = "error";
+    step.durationMs = Date.now() - step.timestamp;
+    step.detail = error;
+    if (step.pendingAction) {
+      step.pendingAction = { ...step.pendingAction, status: "failed" };
+    }
+    await this.updateIterationMessage(step);
+    this.callbacks.onStepUpdate({ ...step });
+    this.eventBus.emit(AuraEventType.AgentStepCompleted, { step });
+  }
+
+  private checkAborted(signal: AbortSignal): void {
+    if (signal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+  }
 }

@@ -1,66 +1,106 @@
-/* ──────────────────────────────────────────────────────────────────
- *  Tool Dispatcher — Routes tool calls based on risk level.
- *  All routing logic lives here, never scattered across components.
- * ────────────────────────────────────────────────────────────────── */
+import type {
+  AuraTool,
+  ToolCallRequest,
+  ToolExecutionContext,
+  AuraToolResult,
+  ToolResultContent,
+  TextContent,
+  ToolCallLogEntry,
+} from "../types/index.js";
+import type { SkillRegistry } from "../skills/skill-registry.js";
 
-import type { Tool, CallToolResult } from '../types/index.js';
-import { store } from '../store/aura-store.js';
-import type { PendingActionQueue } from './pending-action-queue.js';
+export function contentToModelText(
+  content: ToolResultContent | ToolResultContent[],
+): string {
+  if (Array.isArray(content)) {
+    return content
+      .filter((item): item is TextContent => item.type === "text")
+      .map((item) => item.text)
+      .join("\n");
+  }
 
-/**
- * Executes a query tool silently — result returned to AI only, no UI shown.
- */
-async function executeQuerySilently(tool: Tool, args: Record<string, unknown>): Promise<CallToolResult> {
-    store.emitEvent('tool:invoked', { toolName: tool.name, arguments: args });
-    try {
-        const result = await tool.execute(args);
-        store.emitEvent('tool:result', { toolName: tool.name, result });
-        return result;
-    } catch (err) {
-        const errorResult: CallToolResult = {
-            content: [{ type: 'text', text: `Tool "${tool.name}" failed: ${err instanceof Error ? err.message : String(err)}` }],
-            isError: true,
-        };
-        store.emitEvent('tool:failed', { toolName: tool.name, error: err instanceof Error ? err.message : String(err) });
-        return errorResult;
-    }
+  if (content.type === "text") return content.text;
+  return JSON.stringify(content);
 }
 
-/**
- * Executes a safe action tool immediately, shows brief toast.
- */
-async function executeActionSilently(tool: Tool, args: Record<string, unknown>): Promise<CallToolResult> {
-    store.emitEvent('tool:invoked', { toolName: tool.name, arguments: args });
-    try {
-        const result = await tool.execute(args);
-        store.emitEvent('action:succeeded', { toolName: tool.name, arguments: args, result });
-        return result;
-    } catch (err) {
-        const errorResult: CallToolResult = {
-            content: [{ type: 'text', text: `Tool "${tool.name}" failed: ${err instanceof Error ? err.message : String(err)}` }],
-            isError: true,
-        };
-        store.emitEvent('action:failed', { toolName: tool.name, arguments: args, error: err instanceof Error ? err.message : String(err) });
-        return errorResult;
-    }
-}
+export class ToolDispatcher {
+  private globalTimeoutMs = 30000;
 
-/**
- * Central dispatch function — routes tool calls by risk level.
- */
-export function createDispatch(queue: PendingActionQueue) {
-    return function dispatch(
-        tool: Tool,
-        args: Record<string, unknown>
-    ): Promise<CallToolResult> {
-        if (!tool.risk) {
-            return executeQuerySilently(tool, args);
-        }
-        if (tool.risk === 'safe') {
-            return executeActionSilently(tool, args);
-        }
-        // moderate or destructive → show ConfirmationBubble
-        store.emitEvent('action:proposed', { toolName: tool.name, arguments: args });
-        return queue.enqueue(tool, args);
+  constructor(
+    private skillRegistry: SkillRegistry,
+    options?: { globalTimeoutMs?: number } | number,
+  ) {
+    if (typeof options === "number") {
+      this.globalTimeoutMs = options;
+    } else if (options?.globalTimeoutMs) {
+      this.globalTimeoutMs = options.globalTimeoutMs;
+    }
+  }
+
+  getTool(id: string): AuraTool | undefined {
+    return this.skillRegistry.getTool(id);
+  }
+
+  async execute(
+    toolCall: ToolCallRequest,
+    context: ToolExecutionContext,
+  ): Promise<AuraToolResult> {
+    const startTime = Date.now();
+    const result = await this.dispatch(toolCall, context);
+    const logEntry: ToolCallLogEntry = {
+      callId: toolCall.callId,
+      conversationId: context.conversationId,
+      toolId: toolCall.id,
+      arguments: toolCall.arguments,
+      result: result.content,
+      error: result.isError ? (result.content[0] as TextContent)?.text : undefined,
+      durationMs: Date.now() - startTime,
+      timestamp: Date.now(),
+      userId: context.userId,
+      appMetadata: context.appMetadata,
     };
+    return { ...result, logEntry };
+  }
+
+  async dispatch(
+    toolCall: ToolCallRequest,
+    context: ToolExecutionContext,
+  ): Promise<AuraToolResult> {
+    const tool = this.getTool(toolCall.id);
+
+    if (!tool) {
+      const errorMsg = `Tool "${toolCall.id}" is not registered.`;
+      return {
+        content: [{ type: "text", text: errorMsg }],
+        isError: true,
+      };
+    }
+
+    try {
+      const executePromise = tool.execute(toolCall.arguments, context);
+      const timeoutMs = tool.timeout ?? this.globalTimeoutMs;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Tool execution timed out after ${timeoutMs}ms`,
+              ),
+            ),
+          timeoutMs,
+        ),
+      );
+
+      const result = await Promise.race([executePromise, timeoutPromise]);
+      return {
+        ...result,
+        content: Array.isArray(result.content) ? result.content : [result.content],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: (err as Error).message }],
+        isError: true,
+      };
+    }
+  }
 }
