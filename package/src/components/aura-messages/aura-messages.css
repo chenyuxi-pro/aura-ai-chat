@@ -305,6 +305,10 @@
     align-self: flex-start;
 }
 
+.message.action-message {
+    max-width: 100%;
+}
+
 .avatar {
     width: 30px;
     height: 30px;
@@ -359,6 +363,24 @@
     border: 1px solid rgba(239, 68, 68, 0.4);
     border-bottom-left-radius: 6px;
     color: var(--aura-color-text, #e2e4ed);
+}
+
+.message.action-message .bubble.action-wrapper {
+    background: transparent;
+    border: none;
+    padding: 0;
+    width: min(100%, 620px);
+}
+
+.action-summary {
+    margin: 0 0 4px;
+    line-height: 1.5;
+}
+
+.action-impact {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--aura-color-text-muted, #6b7280);
 }
 
 /* ── Markdown in bubbles ───────────────────────────────── */

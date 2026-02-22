@@ -18,18 +18,17 @@ import {
     Tool,
     MessageRole,
 } from '../../types/index.js';
-import { ActionCancelledError } from '../../types/index.js';
 import { store } from '../../store/aura-store.js';
-import { promptBuilder } from '../../prompt/prompt-builder.js';
 import { skillRegistry } from '../../skills/skill-registry.js';
 import { toolRegistry } from '../../tools/tool-registry.js';
 import { ActionToolRegistry } from '../../services/action-tool-registry.js';
 import { PendingActionQueue } from '../../services/pending-action-queue.js';
 import { createDispatch } from '../../services/tool-dispatcher.js';
+import { CommunicationManager } from '../../services/communication-manager.js';
 import { OpenAIProvider } from '../../providers/openai-provider.js';
 import { AnthropicProvider } from '../../providers/anthropic-provider.js';
 import { GitHubCopilotProvider } from '../../providers/github-copilot-provider.js';
-import type { CopilotLoginState } from '../aura-messages/aura-messages.js';
+import type { CopilotLoginState, PendingProposal } from '../aura-messages/aura-messages.js';
 import type { AuraSettings } from '../aura-settings/aura-settings.js';
 import styles from './aura-chat.css?inline';
 
@@ -39,7 +38,6 @@ import '../aura-messages/aura-messages.js';
 import '../aura-input/aura-input.js';
 import '../aura-settings/aura-settings.js';
 import '../aura-history/aura-history.js';
-import '../confirmation-bubble/confirmation-bubble.js';
 
 function createBuiltInProvider(providerId: string, config: BuiltInProviderConfig): AIProvider | undefined {
     switch (providerId) {
@@ -70,6 +68,8 @@ interface ProviderOption {
     name: string;
     icon?: string;
 }
+
+// Types moved to CommunicationManager
 
 @customElement('aura-chat')
 export class AuraChat extends LitElement {
@@ -114,18 +114,20 @@ export class AuraChat extends LitElement {
     private _actionToolRegistry = new ActionToolRegistry();
     private _pendingActionQueue = new PendingActionQueue();
     private _dispatch = createDispatch(this._pendingActionQueue);
-    @state() private _pendingProposal: { tool: Tool; args: Record<string, unknown>; summary: string } | null = null;
-    private readonly _settingsThemeVars = [
-        '--aura-font-family',
-        '--aura-color-bg',
-        '--aura-color-border',
-        '--aura-color-text',
-        '--aura-color-text-muted',
-        '--aura-color-input-bg',
-        '--aura-color-input-bg-focus',
-        '--aura-color-primary',
-        '--aura-color-primary-fg',
-    ] as const;
+    @state() private _pendingProposal: PendingProposal | null = null;
+    private _communicationManager = new CommunicationManager(
+        this._actionToolRegistry,
+        this._pendingActionQueue,
+        this._dispatch,
+        {
+            getMessages: () => this._messages,
+            setMessages: (msgs) => { this._messages = msgs; },
+            appendVisibleMessage: (msg) => this._appendVisibleMessage(msg),
+            setStreaming: (v) => { this._isStreaming = v; },
+            setStreamingContent: (v) => { this._streamingContent = v; },
+            setPendingProposal: (v) => { this._pendingProposal = v; },
+        },
+    );
     private readonly _handleSettingsClose = () => { this._settingsOpen = false; };
     private readonly _handleSettingsApply = (event: Event) => this._onApplySettings(event as CustomEvent<{ draft: Record<string, unknown> }>);
     private readonly _handleSettingsToggleSkill = (event: Event) => this._onToggleSkill(event as CustomEvent<{ name: string; enabled: boolean }>);
@@ -196,16 +198,6 @@ export class AuraChat extends LitElement {
 
         const theme = this.getAttribute('data-theme') || this._resolvedTheme;
         this._settingsDialog.setAttribute('data-theme', theme);
-
-        const computed = getComputedStyle(this);
-        for (const varName of this._settingsThemeVars) {
-            const value = computed.getPropertyValue(varName).trim();
-            if (value) {
-                this._settingsDialog.style.setProperty(varName, value);
-            } else {
-                this._settingsDialog.style.removeProperty(varName);
-            }
-        }
     }
 
     private async _initFromConfig(config: AuraConfig) {
@@ -324,7 +316,7 @@ export class AuraChat extends LitElement {
       ></aura-header>
 
       <aura-messages
-        .messages=${this._messages}
+        .messages=${this._visibleMessages}
         .streaming=${this._isStreaming}
         .streamingContent=${this._streamingContent}
         .aiName=${this._config.identity.aiName}
@@ -334,8 +326,11 @@ export class AuraChat extends LitElement {
         .welcomeIcon=${this._config.welcome.icon || ''}
         .suggestedPrompts=${this._config.welcome.suggestedPrompts}
         .copilotLogin=${this._copilotLoginState}
+        .pendingProposal=${this._pendingProposal}
         @send-prompt=${this._onSuggestedPrompt}
         @copilot-sign-in=${this._onCopilotSignIn}
+        @action-approved=${this._onActionApproved}
+        @action-cancelled=${this._onActionCancelled}
       ></aura-messages>
 
       <aura-input
@@ -363,17 +358,11 @@ export class AuraChat extends LitElement {
         @delete-conversation=${this._onDeleteConversation}
         @rename-conversation=${this._onRenameConversation}
       ></aura-history>
-
-      ${this._pendingProposal ? html`
-        <aura-confirmation-bubble
-          .tool=${this._pendingProposal.tool}
-          .args=${this._pendingProposal.args}
-          .summary=${this._pendingProposal.summary}
-          @action-approved=${this._onActionApproved}
-          @action-cancelled=${this._onActionCancelled}
-        ></aura-confirmation-bubble>
-      ` : ''}
     `;
+    }
+
+    private get _visibleMessages(): Message[] {
+        return this._messages.filter(m => !(m.metadata as Record<string, unknown>)?.internal);
     }
 
     // ── Event handlers ──────────────────────────────────────────
@@ -381,6 +370,17 @@ export class AuraChat extends LitElement {
     private async _onSendMessage(e: CustomEvent<{ text: string }>) {
         const text = e.detail.text;
         if (!text.trim() || this._isStreaming) return;
+
+        if (this._pendingActionQueue.hasPending()) {
+            const msg: Message = {
+                id: crypto.randomUUID(),
+                role: MessageRole.Assistant,
+                content: 'Please approve or cancel the pending action before sending another request.',
+                createdAt: new Date().toISOString(),
+            };
+            this._messages = [...this._messages, msg];
+            return;
+        }
 
         // Add user message immediately for UI feedback
         const userMsg: Message = {
@@ -421,7 +421,7 @@ export class AuraChat extends LitElement {
         }
 
         // Send to AI
-        await this._streamAIResponse();
+        await this._runInteractiveTurn();
     }
 
     private async _onSuggestedPrompt(e: CustomEvent<{ prompt: string }>) {
@@ -429,85 +429,29 @@ export class AuraChat extends LitElement {
         await this._onSendMessage(new CustomEvent('send-message', { detail: { text: e.detail.prompt } }));
     }
 
-    private async _streamAIResponse() {
+    private async _runInteractiveTurn() {
         const provider = this._providers.get(this._activeProviderId);
         if (!provider) {
             store.emitEvent('error', { message: 'No active provider' });
             return;
         }
 
-        this._isStreaming = true;
-        this._streamingContent = '';
-        store.emitEvent('ai:stream:start', {});
+        await this._communicationManager.runInteractiveTurn(
+            provider,
+            { behavior: this._config!.behavior },
+            this._activeModel,
+        );
+    }
 
+
+
+    private async _appendVisibleMessage(message: Message): Promise<void> {
+        this._messages = [...this._messages, message];
+        if (!this._activeConversationId) return;
         try {
-            const systemPrompt = await promptBuilder.build(
-                this._config!.behavior,
-                this._actionToolRegistry.buildSystemPromptBlock(),
-            );
-            const request = {
-                systemPrompt,
-                messages: this._messages,
-                model: this._activeModel,
-                parameters: {
-                    temperature: this._config!.behavior.temperature,
-                    maxTokens: this._config!.behavior.maxTokens,
-                    topP: this._config!.behavior.topP,
-                },
-            };
-
-            const stream = await provider.sendMessage(request);
-            for await (const chunk of stream) {
-                if (chunk.done) break;
-                this._streamingContent += chunk.delta;
-            }
-
-            // Finalize AI message
-            const aiMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Assistant,
-                content: this._streamingContent,
-                createdAt: new Date().toISOString(),
-            };
-
-            // Check if response is an action_proposal
-            const proposal = this._parseActionProposal(this._streamingContent);
-            if (proposal) {
-                // Don't add the raw JSON as a visible message
-                // Instead handle the proposal
-                await this._handleActionProposal(proposal, aiMsg);
-            } else {
-                this._messages = [...this._messages, aiMsg];
-
-                // Persist
-                if (this._activeConversationId) {
-                    try {
-                        await this._config!.conversation.saveMessage(this._activeConversationId, aiMsg);
-                    } catch { /* best effort */ }
-                }
-
-                store.emitEvent('ai:message', { message: aiMsg });
-            }
-
-            store.emitEvent('ai:stream:end', {});
-        } catch (err) {
-            console.error('[AuraChat] AI request failed:', err);
-            if ((err as Error).name !== 'AbortError') {
-                store.emitEvent('error', { message: 'AI request failed', error: String(err) });
-                // Add error message to the conversation area
-                const errorMsg: Message = {
-                    id: crypto.randomUUID(),
-                    role: MessageRole.Error,
-                    content: `Sorry, something went wrong: ${(err as Error).message || 'Unknown error'}`,
-                    createdAt: new Date().toISOString(),
-                };
-                this._messages = [...this._messages, errorMsg];
-            } else {
-                store.emitEvent('ai:stream:cancel', {});
-            }
-        } finally {
-            this._isStreaming = false;
-            this._streamingContent = '';
+            await this._config!.conversation.saveMessage(this._activeConversationId, message);
+        } catch {
+            // Best effort persistence only.
         }
     }
 
@@ -705,168 +649,6 @@ export class AuraChat extends LitElement {
         }
     }
 
-    /**
-     * Parse AI response for action_proposal JSON.
-     * Returns the parsed proposal or null if not a proposal.
-     */
-    private _parseActionProposal(content: string): {
-        name: string;
-        arguments: Record<string, unknown>;
-        summary: string;
-    } | null {
-        const trimmed = content.trim();
-
-        // Try to parse as JSON directly
-        try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed && parsed.type === 'action_proposal' && typeof parsed.name === 'string') {
-                return {
-                    name: parsed.name,
-                    arguments: parsed.arguments || {},
-                    summary: parsed.summary || '',
-                };
-            }
-        } catch {
-            // Not valid JSON — check for JSON inside markdown code block
-            const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-            if (codeBlockMatch) {
-                try {
-                    const parsed = JSON.parse(codeBlockMatch[1].trim());
-                    if (parsed && parsed.type === 'action_proposal' && typeof parsed.name === 'string') {
-                        return {
-                            name: parsed.name,
-                            arguments: parsed.arguments || {},
-                            summary: parsed.summary || '',
-                        };
-                    }
-                } catch { /* not valid JSON in code block */ }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Handle a parsed action proposal from the AI.
-     */
-    private async _handleActionProposal(
-        proposal: { name: string; arguments: Record<string, unknown>; summary: string },
-        _aiMsg: Message,
-    ): Promise<void> {
-        const tool = this._actionToolRegistry.get(proposal.name);
-        if (!tool) {
-            // Tool not found — show warning
-            const errorMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Assistant,
-                content: `⚠ AI attempted to invoke unknown action tool: "${proposal.name}"`,
-                createdAt: new Date().toISOString(),
-            };
-            this._messages = [...this._messages, errorMsg];
-            return;
-        }
-
-        // Validate args
-        const validation = this._actionToolRegistry.validateArgs(proposal.name, proposal.arguments);
-        if (!validation.valid) {
-            const errorMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Error,
-                content: `⚠ AI attempted an action but produced invalid output: ${validation.errors.join(', ')}`,
-                createdAt: new Date().toISOString(),
-            };
-            this._messages = [...this._messages, errorMsg];
-            return;
-        }
-
-        // Check if there's already a pending action
-        if (this._pendingActionQueue.hasPending()) {
-            const waitMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.Error,
-                content: 'Another action is already pending. Please wait for the user to respond.',
-                createdAt: new Date().toISOString(),
-            };
-            this._messages = [...this._messages, waitMsg];
-            return;
-        }
-
-        store.emitEvent('action:proposed', {
-            toolName: proposal.name,
-            arguments: proposal.arguments,
-            summary: proposal.summary,
-        });
-
-        // Set pending proposal to trigger ConfirmationBubble rendering
-        this._pendingProposal = {
-            tool,
-            args: proposal.arguments,
-            summary: proposal.summary,
-        };
-
-        // Dispatch through the tool dispatcher
-        try {
-            const result = await this._dispatch(tool, proposal.arguments);
-
-            // Clear pending proposal
-            this._pendingProposal = null;
-
-            // Inject result back into conversation
-            const resultText = result.content
-                .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-                .map(c => c.text)
-                .join('\n');
-
-            const resultMsg: Message = {
-                id: crypto.randomUUID(),
-                role: MessageRole.System,
-                content: result.isError
-                    ? `Tool error: ${resultText}`
-                    : `Tool result: ${resultText}`,
-                createdAt: new Date().toISOString(),
-                metadata: { type: 'tool_result', toolName: proposal.name, result },
-            };
-            this._messages = [...this._messages, resultMsg];
-
-            store.emitEvent('action:succeeded', {
-                toolName: proposal.name,
-                arguments: proposal.arguments,
-                result,
-            });
-
-            // Continue the conversation so AI can respond to the result
-            await this._streamAIResponse();
-        } catch (err) {
-            // Clear pending proposal
-            this._pendingProposal = null;
-
-            if (err instanceof ActionCancelledError) {
-                // Inject cancellation notice
-                const cancelMsg: Message = {
-                    id: crypto.randomUUID(),
-                    role: MessageRole.System,
-                    content: 'The user cancelled the action.',
-                    createdAt: new Date().toISOString(),
-                    metadata: { type: 'action_cancelled', toolName: proposal.name },
-                };
-                this._messages = [...this._messages, cancelMsg];
-
-                store.emitEvent('action:cancelled', {
-                    toolName: proposal.name,
-                    arguments: proposal.arguments,
-                });
-
-                // Let AI acknowledge the cancellation
-                await this._streamAIResponse();
-            } else {
-                store.emitEvent('action:failed', {
-                    toolName: proposal.name,
-                    arguments: proposal.arguments,
-                    error: err instanceof Error ? err.message : String(err),
-                });
-            }
-        }
-    }
 
     /**
      * Handle confirmation bubble approval event.

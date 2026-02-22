@@ -8,13 +8,20 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { MessageRole } from '../../types/index.js';
-import type { Message, SuggestedPrompt } from '../../types/index.js';
+import type { Message, SuggestedPrompt, Tool } from '../../types/index.js';
 import type { CopilotLoginStatus, DeviceFlowInfo } from '../../providers/github-copilot-provider.js';
 import styles from './aura-messages.css?inline';
+import '../confirmation-bubble/confirmation-bubble.js';
 
 export interface CopilotLoginState {
   status: CopilotLoginStatus;
   info?: DeviceFlowInfo;
+}
+
+export interface PendingProposal {
+  tool: Tool;
+  args: Record<string, unknown>;
+  summary: string;
 }
 
 @customElement('aura-messages')
@@ -32,10 +39,11 @@ export class AuraMessages extends LitElement {
   @state() private _rememberToken = true;
   @property() aiIcon = '';
   @property({ type: Object }) copilotLogin: CopilotLoginState | null = null;
+  @property({ type: Object }) pendingProposal: PendingProposal | null = null;
 
   override updated(changedProps: Map<string, unknown>) {
     super.updated(changedProps);
-    if (changedProps.has('messages') || changedProps.has('streamingContent')) {
+    if (changedProps.has('messages') || changedProps.has('streamingContent') || changedProps.has('pendingProposal')) {
       this._scrollToBottom();
     }
   }
@@ -154,6 +162,7 @@ export class AuraMessages extends LitElement {
     return html`
       <div class="messages-list">
         ${this.messages.map(msg => this._renderMessage(msg))}
+        ${this.pendingProposal ? this._renderPendingProposal() : nothing}
         ${this.streaming ? this._renderStreamingMessage() : nothing}
       </div>
     `;
@@ -202,6 +211,43 @@ export class AuraMessages extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private _renderPendingProposal() {
+    const proposal = this.pendingProposal;
+    if (!proposal) return nothing;
+
+    const avatarContent = this.aiIcon
+      ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
+      : this.aiName.charAt(0).toUpperCase();
+    const impact = this._impactLabel(proposal.tool.risk);
+    const summary = proposal.summary?.trim()
+      || `Execute ${proposal.tool.label || proposal.tool.title || proposal.tool.name}.`;
+
+    return html`
+      <div class="message assistant action-message">
+        <div class="avatar ai">${avatarContent}</div>
+        <div class="bubble action-wrapper">
+          <p class="action-summary">${summary}</p>
+          <p class="action-impact">${impact}</p>
+          <aura-confirmation-bubble
+            .tool=${proposal.tool}
+            .args=${proposal.args}
+            .summary=${''}
+          ></aura-confirmation-bubble>
+        </div>
+      </div>
+    `;
+  }
+
+  private _impactLabel(risk: Tool['risk']): string {
+    if (risk === 'destructive') {
+      return 'Impact: destructive change. Approval and typed confirmation are required.';
+    }
+    if (risk === 'moderate') {
+      return 'Impact: this will modify application data. Approval is required.';
+    }
+    return 'Impact: this action is low risk.';
   }
 
   private _renderMarkdown(content: string): string {
