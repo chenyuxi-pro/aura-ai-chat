@@ -58,11 +58,8 @@ export class AuraMessagesElement extends LitElement {
     const isError = !!(
       msg.metadata?.["type"] === "error" || msg.metadata?.["isError"]
     );
-    const layoutClass = isUser
-      ? "user-message"
-      : isError
-        ? "error-message"
-        : "ai-message";
+    const layoutClass = isUser ? "user-message" : "ai-message";
+    const stateClass = isError ? "message-error" : "";
 
     const senderLabel = isUser ? "You" : this.aiName;
     const avatarSymbol = isUser
@@ -73,7 +70,7 @@ export class AuraMessagesElement extends LitElement {
 
     return html`
       <div
-        class="chat-message ${layoutClass}"
+        class="chat-message ${layoutClass} ${stateClass}"
         role="log"
         aria-label="${senderLabel} message"
         part="message message-${msg.role}"

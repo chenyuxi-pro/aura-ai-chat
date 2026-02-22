@@ -2,6 +2,7 @@ import "./src/index.js";
 import { AuraToolRisk } from "./src/index.js";
 import type {
     AuraConfig,
+    AuraEvent,
     AuraTool,
     ChatMessage,
     Conversation,
@@ -790,334 +791,21 @@ const defaultConfig: DemoConfig = {
     },
 };
 
-const eventList = document.getElementById("eventList")!;
+type AuraEventMonitorApi = HTMLElement & {
+    pushEvent(event: AuraEvent): void;
+    clearEvents(): void;
+};
 
-function getEventCategory(type: string) {
-    if (type === "message-sent") return "user";
-    if (type === "message-received") return "ai";
-    if (type.includes("error")) return "error";
-    return "widget";
-}
+type AuraSettingsApi = HTMLElement & {
+    config?: Partial<AuraConfig>;
+    showActions?: boolean;
+    getValues(): Partial<AuraConfig>;
+};
 
-function escapeHtml(str: string) {
-    return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
+const eventMonitor = document.getElementById("eventMonitor") as AuraEventMonitorApi;
+const settingsPanel = document.getElementById("settingsPanel") as AuraSettingsApi;
 
-function addEvent(event: any) {
-    const item = document.createElement("div");
-    item.className = "event-item";
-    const time = new Date(event.timestamp).toLocaleTimeString();
-    const category = getEventCategory(event.type);
-    const payload = event.payload ? JSON.stringify(event.payload, null, 2) : "";
-
-    item.innerHTML = `
-    <div class="event-row">
-      <span class="event-time">${time}</span>
-      <span class="event-badge ${category}">${category}</span>
-      <span>${event.type}</span>
-    </div>
-    ${payload ? `<div class="event-payload">${escapeHtml(payload)}</div>` : ""}
-  `;
-
-    item.addEventListener("click", () => item.classList.toggle("expanded"));
-    eventList.prepend(item);
-}
-
-document.getElementById("clearEvents")!.addEventListener("click", () => {
-    eventList.innerHTML = "";
-});
-
-const settingsBody = document.getElementById("settingsBody")!;
-const collapseState = JSON.parse(localStorage.getItem("aura-demo:collapse") || "{}");
-
-function renderField(field: any) {
-    if (field.type === "textarea") {
-        return `<div class="field">
-      <div class="field-label">${field.label}</div>
-      <textarea data-key="${field.key}">${field.value ?? ""}</textarea>
-    </div>`;
-    }
-    if (field.type === "checkbox") {
-        return `<div class="check-item">
-      <input type="checkbox" data-key="${field.key}" ${field.value ? "checked" : ""} />
-      <span>${field.label}</span>
-    </div>`;
-    }
-    if (field.type === "number") {
-        return `<div class="field">
-      <div class="field-label">${field.label}</div>
-      <input type="number" data-key="${field.key}" value="${field.value ?? ""}" />
-    </div>`;
-    }
-    return `<div class="field">
-    <div class="field-label">${field.label}</div>
-    <input type="text" data-key="${field.key}" value="${field.value ?? ""}" />
-  </div>`;
-}
-
-function buildSettingsUI() {
-    const cfg = defaultConfig;
-    settingsBody.innerHTML = "";
-
-    const groups = [
-        {
-            id: "identity",
-            title: "Identity",
-            fields: [
-                {
-                    key: "identity.appMetadata.appId",
-                    label: "App ID",
-                    type: "text",
-                    value: cfg.identity.appMetadata.appId,
-                },
-                {
-                    key: "identity.appMetadata.teamId",
-                    label: "Team ID",
-                    type: "text",
-                    value: cfg.identity.appMetadata.teamId,
-                },
-                {
-                    key: "identity.appMetadata.tenantId",
-                    label: "Tenant ID",
-                    type: "text",
-                    value: cfg.identity.appMetadata.tenantId,
-                },
-                {
-                    key: "identity.appMetadata.userId",
-                    label: "User ID",
-                    type: "text",
-                    value: cfg.identity.appMetadata.userId,
-                },
-                {
-                    key: "identity.aiName",
-                    label: "AI Name",
-                    type: "text",
-                    value: cfg.identity.aiName,
-                },
-            ],
-        },
-        {
-            id: "appearance",
-            title: "Appearance",
-            fields: [
-                {
-                    key: "appearance.headerTitle",
-                    label: "Header Title",
-                    type: "text",
-                    value: cfg.appearance.headerTitle,
-                },
-                {
-                    key: "appearance.headerIcon",
-                    label: "Header Icon",
-                    type: "text",
-                    value: cfg.appearance.headerIcon,
-                },
-                {
-                    key: "appearance.welcomeMessageTitle",
-                    label: "Welcome Title",
-                    type: "text",
-                    value: cfg.appearance.welcomeMessageTitle,
-                },
-                {
-                    key: "appearance.welcomeMessage",
-                    label: "Welcome Message",
-                    type: "textarea",
-                    value: cfg.appearance.welcomeMessage,
-                },
-                {
-                    key: "appearance.inputPlaceholder",
-                    label: "Input Placeholder",
-                    type: "text",
-                    value: cfg.appearance.inputPlaceholder,
-                },
-                {
-                    key: "appearance.enableAttachments",
-                    label: "Enable Attachments",
-                    type: "checkbox",
-                    value: cfg.appearance.enableAttachments,
-                },
-                {
-                    key: "appearance.maxAttachmentSize",
-                    label: "Max Attachment Size",
-                    type: "number",
-                    value: cfg.appearance.maxAttachmentSize,
-                },
-            ],
-        },
-        {
-            id: "providers",
-            title: "Providers",
-            custom: () => `
-        <div class="check-item">
-          <input type="checkbox" data-key="providers.0.config.rememberToken" ${cfg.providers[0].config.rememberToken ? "checked" : ""} />
-          <span>GitHub Copilot: remember token</span>
-        </div>
-      `,
-        },
-        {
-            id: "agent",
-            title: "Agent",
-            fields: [
-                {
-                    key: "agent.appSystemPrompt",
-                    label: "System Prompt",
-                    type: "textarea",
-                    value: cfg.agent.appSystemPrompt,
-                },
-                {
-                    key: "agent.additionalSafetyInstructions",
-                    label: "Safety Instructions",
-                    type: "textarea",
-                    value: cfg.agent.additionalSafetyInstructions,
-                },
-                {
-                    key: "agent.maxContextTokens",
-                    label: "Max Context Tokens",
-                    type: "number",
-                    value: cfg.agent.maxContextTokens,
-                },
-                {
-                    key: "agent.maxIterations",
-                    label: "Max Iterations",
-                    type: "number",
-                    value: cfg.agent.maxIterations,
-                },
-                {
-                    key: "agent.toolTimeout",
-                    label: "Tool Timeout (ms)",
-                    type: "number",
-                    value: cfg.agent.toolTimeout,
-                },
-                {
-                    key: "agent.confirmationTimeoutMs",
-                    label: "Confirmation Timeout (ms)",
-                    type: "number",
-                    value: cfg.agent.confirmationTimeoutMs,
-                },
-                {
-                    key: "agent.enableStreaming",
-                    label: "Enable Streaming",
-                    type: "checkbox",
-                    value: cfg.agent.enableStreaming,
-                },
-                {
-                    key: "agent.showThinkingProcess",
-                    label: "Show Thinking Process",
-                    type: "checkbox",
-                    value: cfg.agent.showThinkingProcess,
-                },
-                {
-                    key: "agent.enableWebMcp",
-                    label: "Enable WebMCP",
-                    type: "checkbox",
-                    value: cfg.agent.enableWebMcp,
-                },
-            ],
-        },
-        {
-            id: "skills",
-            title: "Skills",
-            custom: () =>
-                cfg.agent.skills
-                    .map(
-                        (skill: any) => `<div class="check-item">
-              <input type="checkbox" data-skill="${skill.name}" ${skill.enabled !== false ? "checked" : ""} />
-              <span>${skill.name}</span>
-            </div>`,
-                    )
-                    .join(""),
-        },
-        {
-            id: "tools",
-            title: "Tools",
-            custom: () =>
-                cfg.agent.tools
-                    .map(
-                        (tool: any) => `<div class="check-item">
-              <input type="checkbox" data-tool="${tool.name}" ${tool.enabled !== false ? "checked" : ""} />
-              <span>${tool.title || tool.name}</span>
-            </div>`,
-                    )
-                    .join(""),
-        },
-    ];
-
-    for (const group of groups) {
-        const isOpen = collapseState[group.id] !== false;
-        const node = document.createElement("div");
-        node.className = "setting-group";
-        node.innerHTML = `
-      <div class="setting-group-header">
-        <span class="setting-chevron ${isOpen ? "open" : ""}">▶</span>
-        <span class="setting-group-title">${group.title}</span>
-      </div>
-      <div class="setting-group-body ${isOpen ? "open" : ""}">
-        ${group.custom ? group.custom() : group.fields.map((f: any) => renderField(f)).join("")}
-      </div>
-    `;
-
-        const header = node.querySelector(".setting-group-header")!;
-        header.addEventListener("click", () => {
-            const body = node.querySelector(".setting-group-body")!;
-            const chevron = node.querySelector(".setting-chevron")!;
-            body.classList.toggle("open");
-            chevron.classList.toggle("open");
-            collapseState[group.id] = body.classList.contains("open");
-            localStorage.setItem("aura-demo:collapse", JSON.stringify(collapseState));
-        });
-
-        settingsBody.appendChild(node);
-    }
-}
-
-function setByPath(root: any, path: string, value: any) {
-    const parts = path.split(".");
-    let obj = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const key = parts[i];
-        const next = parts[i + 1];
-        if (obj[key] == null) {
-            obj[key] = /^\d+$/.test(next) ? [] : {};
-        }
-        obj = obj[key];
-    }
-    obj[parts[parts.length - 1]] = value;
-}
-
-function readSettingsFromUI() {
-    const values: any = {};
-    settingsBody
-        .querySelectorAll("input[data-key], textarea[data-key], select[data-key]")
-        .forEach((el: any) => {
-            const key = el.dataset.key;
-            let value;
-            if (el instanceof HTMLInputElement && el.type === "checkbox") {
-                value = el.checked;
-            } else if (el instanceof HTMLInputElement && el.type === "number") {
-                value = Number(el.value);
-            } else {
-                value = el.value;
-            }
-            values[key] = value;
-        });
-
-    settingsBody.querySelectorAll("input[data-skill]").forEach((el: any) => {
-        const skill = defaultConfig.agent.skills.find((s: any) => s.name === el.dataset.skill);
-        if (skill) skill.enabled = el.checked;
-    });
-
-    settingsBody.querySelectorAll("input[data-tool]").forEach((el: any) => {
-        const tool = defaultConfig.agent.tools.find((t: any) => t.name === el.dataset.tool);
-        if (tool) tool.enabled = el.checked;
-    });
-
-    return values;
-}
-
-function buildWidgetConfig() {
+function cloneEditorConfig(): DemoConfig {
     return {
         ...defaultConfig,
         identity: {
@@ -1131,23 +819,118 @@ function buildWidgetConfig() {
         })),
         agent: {
             ...defaultConfig.agent,
-            skills: defaultConfig.agent.skills.filter((s: any) => s.enabled !== false),
-            tools: defaultConfig.agent.tools.filter((t: any) => t.enabled !== false),
+            skills: [...defaultConfig.agent.skills],
+            tools: [...defaultConfig.agent.tools],
         },
-        onAuraEvent: (event: any) => addEvent(event),
+    };
+}
+
+function syncBaseConfigFromDraft(draft: Partial<AuraConfig>): void {
+    if (draft.identity) {
+        defaultConfig.identity = {
+            ...defaultConfig.identity,
+            ...draft.identity,
+            appMetadata: {
+                ...defaultConfig.identity.appMetadata,
+                ...(draft.identity.appMetadata ?? {}),
+            },
+        };
+    }
+
+    if (draft.appearance) {
+        defaultConfig.appearance = {
+            ...defaultConfig.appearance,
+            ...draft.appearance,
+        };
+    }
+
+    if (draft.providers?.length) {
+        defaultConfig.providers = draft.providers as NonNullable<DemoConfig["providers"]>;
+    }
+
+    if (draft.agent) {
+        const {
+            tools: _ignoredTools,
+            skills: _ignoredSkills,
+            ...agentUpdates
+        } = draft.agent;
+
+        defaultConfig.agent = {
+            ...defaultConfig.agent,
+            ...agentUpdates,
+        };
+    }
+}
+
+function resolveEffectiveTheme(theme: string): string {
+    if (theme === "auto") {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+    }
+
+    return theme;
+}
+
+function applyPageTheme(theme: string): void {
+    defaultConfig.appearance.theme = theme as DemoConfig["appearance"]["theme"];
+    const effectiveTheme = resolveEffectiveTheme(theme);
+
+    document.body.classList.remove("light", "professional-light");
+    if (effectiveTheme !== "dark") {
+        document.body.classList.add(effectiveTheme);
+    }
+
+    eventMonitor.setAttribute("data-theme", effectiveTheme);
+    settingsPanel.setAttribute("data-theme", effectiveTheme);
+}
+
+function buildWidgetConfig(draft?: Partial<AuraConfig>) {
+    const editorConfig = cloneEditorConfig();
+    const agentDraft = draft?.agent;
+    const {
+        tools: selectedTools,
+        skills: selectedSkills,
+        ...agentUpdates
+    } = agentDraft ?? {};
+
+    return {
+        ...editorConfig,
+        identity: {
+            ...editorConfig.identity,
+            ...(draft?.identity ?? {}),
+            appMetadata: {
+                ...editorConfig.identity.appMetadata,
+                ...(draft?.identity?.appMetadata ?? {}),
+            },
+        },
+        appearance: {
+            ...editorConfig.appearance,
+            ...(draft?.appearance ?? {}),
+        },
+        providers: draft?.providers?.length
+            ? draft.providers as NonNullable<AuraConfig["providers"]>
+            : editorConfig.providers,
+        agent: {
+            ...editorConfig.agent,
+            ...agentUpdates,
+            skills: selectedSkills ?? editorConfig.agent.skills,
+            tools: selectedTools ?? editorConfig.agent.tools,
+        },
+        onAuraEvent: (event: AuraEvent) => eventMonitor.pushEvent(event),
     };
 }
 
 function applyToWidget() {
-    const draft = readSettingsFromUI();
-    for (const [path, value] of Object.entries(draft)) {
-        setByPath(defaultConfig, path, value);
-    }
+    const draft = settingsPanel.getValues();
+    syncBaseConfigFromDraft(draft);
+    applyPageTheme(draft.appearance?.theme ?? defaultConfig.appearance.theme ?? "light");
 
     const widget: any = document.getElementById("widget");
-    widget.config = buildWidgetConfig();
+    widget.config = buildWidgetConfig(draft);
+    settingsPanel.config = cloneEditorConfig();
 
-    addEvent({
+    eventMonitor.pushEvent({
         type: "debug",
         timestamp: Date.now(),
         payload: { message: "Config applied from sidebar." },
@@ -1220,21 +1003,12 @@ window.addEventListener("mouseup", () => {
     document.body.style.userSelect = "";
 });
 
-const themeSelect: any = document.getElementById("themeSelect")!;
+settingsPanel.showActions = false;
+settingsPanel.config = cloneEditorConfig();
+applyPageTheme(defaultConfig.appearance.theme ?? "light");
 
-function applyTheme(theme: string) {
-    defaultConfig.appearance.theme = theme;
-    document.body.classList.remove("light", "professional-light");
-    if (theme !== "dark") {
-        document.body.classList.add(theme);
-    }
-    applyToWidget();
-}
+const widget: any = document.getElementById("widget");
+widget.config = buildWidgetConfig();
 
-themeSelect.addEventListener("change", (e: any) => {
-    applyTheme(e.target.value);
-});
 
-themeSelect.value = defaultConfig.appearance.theme;
-buildSettingsUI();
-applyTheme(defaultConfig.appearance.theme);
+

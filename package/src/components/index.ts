@@ -8,7 +8,7 @@ export { ActionPreviewElement } from "./aura-action-preview/aura-action-preview.
 export { AuraResultViewElement } from "./aura-result-view/aura-result-view.js";
 export { AuraAgentIterationElement } from "./aura-agent-iteration/aura-agent-iteration.js";
 export { AuraAgentStepElement } from "./aura-agent-step/aura-agent-step.js";
-export { AuraConsole } from "./aura-console/aura-console.js";
+export { AuraEventMonitorElement } from "./aura-event-monitor/aura-event-monitor.js";
 export { AuraJsonView } from "./aura-json-view/aura-json-view.js";
 export { ConfirmationBubbleElement } from "./confirmation-bubble/confirmation-bubble.js";
 export { FileAttachmentElement } from "./file-attachment/file-attachment.js";

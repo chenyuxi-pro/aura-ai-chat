@@ -1,5 +1,5 @@
 import "./components/aura-chat/aura-chat.js";
-import "./components/aura-console/aura-console.js";
+import "./components/aura-event-monitor/aura-event-monitor.js";
 
 export type {
   AuraConfig,
@@ -72,6 +72,7 @@ export { ActionPreviewElement } from "./components/aura-action-preview/aura-acti
 export { AuraResultViewElement } from "./components/aura-result-view/aura-result-view.js";
 export { AuraAgentIterationElement } from "./components/aura-agent-iteration/aura-agent-iteration.js";
 export { AuraAgentStepElement } from "./components/aura-agent-step/aura-agent-step.js";
+export { AuraEventMonitorElement } from "./components/aura-event-monitor/aura-event-monitor.js";
 
 export { SkillRegistry } from "./skills/skill-registry.js";
 export {
@@ -119,7 +120,6 @@ export type {
 } from "./providers/index.js";
 
 export { EventBus, AUDIT_EVENT_NAME } from "./logging/event-bus.js";
-export { AuraConsole } from "./components/aura-console/aura-console.js";
 
 export type { AuraTheme } from "./themes/index.js";
 export {

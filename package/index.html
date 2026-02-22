@@ -143,23 +143,6 @@
             margin-top: 10px;
         }
 
-        .theme-select {
-            padding: 4px 8px;
-            border: 1px solid var(--demo-border);
-            border-radius: 6px;
-            background: var(--demo-surface);
-            color: var(--demo-text);
-            font-size: 11px;
-            font-family: var(--demo-font);
-            cursor: pointer;
-            outline: none;
-            flex-shrink: 0;
-        }
-
-        .theme-select:hover {
-            border-color: var(--demo-primary);
-        }
-
         .toggle-btn {
             display: inline-flex;
             align-items: center;
@@ -202,6 +185,10 @@
             flex: 1;
             overflow-y: auto;
             padding: 8px;
+        }
+
+        aura-settings {
+            display: block;
         }
 
         /* ── Setting groups ──────────────────────────────────── */
@@ -386,6 +373,12 @@
             height: 100%;
         }
 
+        aura-event-monitor {
+            flex: 1;
+            min-height: 0;
+            min-width: 0;
+        }
+
         /* ── Right Sidebar (Event Log) ────────────────────────── */
 
         .sidebar-right {
@@ -525,11 +518,6 @@
                     ✦ Aura AI Chat <span class="sidebar-version">v1.0.0</span>
                 </div>
                 <div class="sidebar-controls">
-                    <select class="theme-select" id="themeSelect">
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
-                        <option value="professional-light" selected>Professional</option>
-                    </select>
                     <button class="toggle-btn active" id="toggleFullSize">
                         <span class="toggle-indicator"></span> Full
                     </button>
@@ -538,8 +526,8 @@
                     </button>
                 </div>
             </div>
-            <div class="sidebar-body" id="settingsBody">
-                <!-- Settings groups rendered by JS -->
+            <div class="sidebar-body">
+                <aura-settings id="settingsPanel"></aura-settings>
             </div>
             <div class="sidebar-footer">
                 <button class="apply-btn" id="applyBtn">Apply to widget</button>
@@ -559,11 +547,7 @@
 
         <!-- ═══ RIGHT SIDEBAR (Event Log) ═══ -->
         <div class="sidebar-right" id="eventLogPanel">
-            <div class="event-header">
-                <span class="event-title">Event Log</span>
-                <button class="clear-btn" id="clearEvents">Clear</button>
-            </div>
-            <div class="event-list" id="eventList"></div>
+            <aura-event-monitor id="eventMonitor"></aura-event-monitor>
         </div>
     </div>
 

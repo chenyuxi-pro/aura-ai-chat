@@ -19,11 +19,6 @@
   flex-direction: row;
 }
 
-.error-message {
-  background: var(--aura-error-bg, #fef2f2);
-  border-radius: 8px;
-}
-
 .message-avatar {
   flex-shrink: 0;
   width: 32px;
@@ -50,6 +45,11 @@
 
 .user-message .message-content {
   align-items: flex-end;
+}
+
+.message-error .message-avatar {
+  background: var(--aura-msg-error-bg, #fef2f2);
+  color: var(--aura-msg-error-fg, #991b1b);
 }
 
 .message-header {
@@ -88,6 +88,23 @@
   max-width: 90%;
 }
 
+.message-error .message-body {
+  max-width: 90%;
+  padding: 10px 14px;
+  border-radius: 12px 12px 12px 2px;
+  background: var(--aura-msg-error-bg, #fef2f2);
+  color: var(--aura-msg-error-fg, #991b1b);
+  border: 1px solid color-mix(in srgb, var(--aura-msg-error-fg, #991b1b) 20%, transparent);
+}
+
+.message-error .message-sender {
+  color: var(--aura-msg-error-fg, #991b1b);
+}
+
+.message-error .message-text a {
+  color: inherit;
+}
+
 .message-text p {
   margin: 0 0 1em;
 }
@@ -124,16 +141,16 @@
   margin-top: 8px;
   padding: 4px 12px;
   border-radius: 4px;
-  border: 1px solid #ef4444;
-  background: #fff;
-  color: #ef4444;
+  border: 1px solid var(--aura-msg-error-fg, #ef4444);
+  background: transparent;
+  color: var(--aura-msg-error-fg, #ef4444);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .retry-btn:hover {
-  background: #ef4444;
+  background: var(--aura-msg-error-fg, #ef4444);
   color: #fff;
 }
 
