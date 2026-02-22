@@ -1,12 +1,11 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 import type { DashboardPanel } from '../../core/models/panel.model';
 
 @Component({
-  selector: 'app-panel-delete-preview-element',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-panel-delete-preview-element',
+    imports: [],
+    template: `
     <section class="delete-card">
       <header>
         <strong>Delete Panel</strong>
@@ -21,8 +20,8 @@ import type { DashboardPanel } from '../../core/models/panel.model';
       <p class="warning">This cannot be undone.</p>
     </section>
   `,
-  styles: [
-    `
+    styles: [
+        `
       :host {
         display: block;
       }
@@ -60,7 +59,7 @@ import type { DashboardPanel } from '../../core/models/panel.model';
         font-weight: 700;
       }
     `,
-  ],
+    ]
 })
 export class PanelDeletePreviewElementComponent {
   @Input() panel: DashboardPanel | null = null;

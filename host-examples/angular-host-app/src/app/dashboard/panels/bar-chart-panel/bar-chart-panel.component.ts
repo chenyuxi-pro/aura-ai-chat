@@ -1,15 +1,14 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 import { NgxEchartsDirective } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import type { DashboardPanel } from '../../../core/models/panel.model';
 
 @Component({
-  selector: 'app-bar-chart-panel',
-  standalone: true,
-  imports: [CommonModule, NgxEchartsDirective],
-  templateUrl: './bar-chart-panel.component.html',
-  styleUrl: './bar-chart-panel.component.scss',
+    selector: 'app-bar-chart-panel',
+    imports: [NgxEchartsDirective],
+    templateUrl: './bar-chart-panel.component.html',
+    styleUrl: './bar-chart-panel.component.scss'
 })
 export class BarChartPanelComponent {
   @Input({ required: true }) panel!: DashboardPanel;

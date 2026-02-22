@@ -5,7 +5,7 @@
 import { LitElement, html, unsafeCSS } from 'lit';
 import type { PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type {
+import {
     AuraConfig,
     Message,
     AIModel,
@@ -16,6 +16,7 @@ import type {
     AuraTheme,
     CallToolResult,
     Tool,
+    MessageRole,
 } from '../../types/index.js';
 import { ActionCancelledError } from '../../types/index.js';
 import { store } from '../../store/aura-store.js';
@@ -381,6 +382,16 @@ export class AuraChat extends LitElement {
         const text = e.detail.text;
         if (!text.trim() || this._isStreaming) return;
 
+        // Add user message immediately for UI feedback
+        const userMsg: Message = {
+            id: crypto.randomUUID(),
+            role: MessageRole.User,
+            content: text,
+            createdAt: new Date().toISOString(),
+        };
+        this._messages = [...this._messages, userMsg];
+        store.emitEvent('user:message', { message: userMsg });
+
         // Create conversation if needed
         if (!this._activeConversationId) {
             try {
@@ -390,36 +401,31 @@ export class AuraChat extends LitElement {
                 store.emitEvent('conversation:new', { conversationId: conv.id });
             } catch (err) {
                 store.emitEvent('error', { message: 'Failed to create conversation', error: err });
-                return;
+
+                // Add warning message that conversation won't be saved
+                const warningMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: MessageRole.Assistant,
+                    content: '⚠ Failed to create conversation. Your messages will not be saved on the server but you can continue this session.',
+                    createdAt: new Date().toISOString(),
+                };
+                this._messages = [...this._messages, warningMsg];
             }
         }
 
-        // Add user message
-        const userMsg: Message = {
-            id: crypto.randomUUID(),
-            role: 'user',
-            content: text,
-            createdAt: new Date().toISOString(),
-        };
-        this._messages = [...this._messages, userMsg];
-
-        // Persist
-        try {
-            await this._config!.conversation.saveMessage(this._activeConversationId, userMsg);
-        } catch { /* best effort */ }
-
-        store.emitEvent('user:message', { message: userMsg });
+        // Persist user message if we have a conversation ID
+        if (this._activeConversationId) {
+            try {
+                await this._config!.conversation.saveMessage(this._activeConversationId, userMsg);
+            } catch { /* best effort */ }
+        }
 
         // Send to AI
         await this._streamAIResponse();
     }
 
     private async _onSuggestedPrompt(e: CustomEvent<{ prompt: string }>) {
-        const input = this.shadowRoot?.querySelector('aura-input') as any;
-        if (input?.setInput) {
-            input.setInput(e.detail.prompt);
-        }
-        // Auto-send the prompt
+        // Auto-send the prompt directly
         await this._onSendMessage(new CustomEvent('send-message', { detail: { text: e.detail.prompt } }));
     }
 
@@ -459,7 +465,7 @@ export class AuraChat extends LitElement {
             // Finalize AI message
             const aiMsg: Message = {
                 id: crypto.randomUUID(),
-                role: 'assistant',
+                role: MessageRole.Assistant,
                 content: this._streamingContent,
                 createdAt: new Date().toISOString(),
             };
@@ -485,12 +491,13 @@ export class AuraChat extends LitElement {
 
             store.emitEvent('ai:stream:end', {});
         } catch (err) {
+            console.error('[AuraChat] AI request failed:', err);
             if ((err as Error).name !== 'AbortError') {
                 store.emitEvent('error', { message: 'AI request failed', error: String(err) });
-                // Add error message
+                // Add error message to the conversation area
                 const errorMsg: Message = {
                     id: crypto.randomUUID(),
-                    role: 'error',
+                    role: MessageRole.Error,
                     content: `Sorry, something went wrong: ${(err as Error).message || 'Unknown error'}`,
                     createdAt: new Date().toISOString(),
                 };
@@ -751,7 +758,7 @@ export class AuraChat extends LitElement {
             // Tool not found — show warning
             const errorMsg: Message = {
                 id: crypto.randomUUID(),
-                role: 'assistant',
+                role: MessageRole.Assistant,
                 content: `⚠ AI attempted to invoke unknown action tool: "${proposal.name}"`,
                 createdAt: new Date().toISOString(),
             };
@@ -764,7 +771,7 @@ export class AuraChat extends LitElement {
         if (!validation.valid) {
             const errorMsg: Message = {
                 id: crypto.randomUUID(),
-                role: 'assistant',
+                role: MessageRole.Error,
                 content: `⚠ AI attempted an action but produced invalid output: ${validation.errors.join(', ')}`,
                 createdAt: new Date().toISOString(),
             };
@@ -776,7 +783,7 @@ export class AuraChat extends LitElement {
         if (this._pendingActionQueue.hasPending()) {
             const waitMsg: Message = {
                 id: crypto.randomUUID(),
-                role: 'assistant',
+                role: MessageRole.Error,
                 content: 'Another action is already pending. Please wait for the user to respond.',
                 createdAt: new Date().toISOString(),
             };
@@ -812,7 +819,7 @@ export class AuraChat extends LitElement {
 
             const resultMsg: Message = {
                 id: crypto.randomUUID(),
-                role: 'system',
+                role: MessageRole.System,
                 content: result.isError
                     ? `Tool error: ${resultText}`
                     : `Tool result: ${resultText}`,
@@ -837,7 +844,7 @@ export class AuraChat extends LitElement {
                 // Inject cancellation notice
                 const cancelMsg: Message = {
                     id: crypto.randomUUID(),
-                    role: 'system',
+                    role: MessageRole.System,
                     content: 'The user cancelled the action.',
                     createdAt: new Date().toISOString(),
                     metadata: { type: 'action_cancelled', toolName: proposal.name },

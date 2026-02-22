@@ -1,15 +1,16 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 import { AgGridAngular } from 'ag-grid-angular';
-import type { ColDef } from 'ag-grid-community';
+import { ClientSideRowModelModule, ModuleRegistry, type ColDef } from 'ag-grid-community';
 import type { DashboardPanel } from '../../../core/models/panel.model';
 
+ModuleRegistry.registerModules([ClientSideRowModelModule]);
+
 @Component({
-  selector: 'app-table-panel',
-  standalone: true,
-  imports: [CommonModule, AgGridAngular],
-  templateUrl: './table-panel.component.html',
-  styleUrl: './table-panel.component.scss',
+    selector: 'app-table-panel',
+    imports: [AgGridAngular],
+    templateUrl: './table-panel.component.html',
+    styleUrl: './table-panel.component.scss'
 })
 export class TablePanelComponent {
   @Input({ required: true }) panel!: DashboardPanel;

@@ -12,9 +12,6 @@ const SYSTEM_PROMPT = [
   'Use concise language and prioritize actionable guidance.',
   'Always rely on tools before claiming dashboard state.',
   'Use tool results to produce natural confirmations with panel title and type when applicable.',
-  '',
-  '## Active Skill Prompt',
-  dashboardBuilderSkill.systemPrompt,
 ].join('\n');
 
 @Injectable({ providedIn: 'root' })

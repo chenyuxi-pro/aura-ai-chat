@@ -1,15 +1,14 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 import { NgxEchartsDirective } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import type { DashboardPanel } from '../../../core/models/panel.model';
 
 @Component({
-  selector: 'app-line-chart-panel',
-  standalone: true,
-  imports: [CommonModule, NgxEchartsDirective],
-  templateUrl: './line-chart-panel.component.html',
-  styleUrl: './line-chart-panel.component.scss',
+    selector: 'app-line-chart-panel',
+    imports: [NgxEchartsDirective],
+    templateUrl: './line-chart-panel.component.html',
+    styleUrl: './line-chart-panel.component.scss'
 })
 export class LineChartPanelComponent {
   @Input({ required: true }) panel!: DashboardPanel;

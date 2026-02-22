@@ -5,6 +5,17 @@ export const dashboardBuilderSkill: Skill = {
   title: 'Dashboard Builder',
   description:
     'Guides the AI to help users build and manage their dashboard through a structured conversational flow.',
+  tools: [
+    'dashboard.get_panel_list',
+    'dashboard.get_source_catalog',
+    'data.fetch_weather',
+    'data.fetch_countries',
+    'dashboard.panel.create',
+    'dashboard.panel.update',
+    'dashboard.panel.delete',
+    'dashboard.panel.rename',
+    'app.theme.change',
+  ],
   systemPrompt: `
 # Dashboard Builder Skill
 

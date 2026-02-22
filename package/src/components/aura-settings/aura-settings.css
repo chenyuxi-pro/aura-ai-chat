@@ -266,6 +266,15 @@
     color: var(--aura-color-text-muted, #6b7280);
 }
 
+.check-item.missing {
+    color: var(--aura-color-error, #ef4444);
+}
+
+.check-item.missing .error-icon {
+    font-size: 11px;
+    margin-left: auto;
+}
+
 .check-sub {
     padding-left: 24px;
 }

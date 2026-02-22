@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 
 interface DiffRow {
@@ -9,10 +9,9 @@ interface DiffRow {
 }
 
 @Component({
-  selector: 'app-data-diff-view-element',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-data-diff-view-element',
+    imports: [],
+    template: `
     <section class="diff-card">
       <header>
         <strong>Panel Update Preview</strong>
@@ -34,8 +33,8 @@ interface DiffRow {
       </div>
     </section>
   `,
-  styles: [
-    `
+    styles: [
+        `
       :host {
         display: block;
       }
@@ -101,7 +100,7 @@ interface DiffRow {
         word-break: break-word;
       }
     `,
-  ],
+    ]
 })
 export class DataDiffViewElementComponent {
   @Input() before: unknown;

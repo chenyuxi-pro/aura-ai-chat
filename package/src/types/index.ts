@@ -119,7 +119,7 @@ export interface Skill {
     title?: string;
     description: string;
     systemPrompt: string;
-    tools?: Tool[];
+    tools?: string[];
     enabled?: boolean;
     icon?: string;
     category?: string;
@@ -205,9 +205,16 @@ export interface ConversationMeta {
     updatedAt: string;
 }
 
+export enum MessageRole {
+    User = 'user',
+    Assistant = 'assistant',
+    System = 'system',
+    Error = 'error',
+}
+
 export interface Message {
     id: string;
-    role: 'user' | 'assistant' | 'system' | 'error';
+    role: MessageRole;
     content: string;
     createdAt: string;
     metadata?: Record<string, unknown>;

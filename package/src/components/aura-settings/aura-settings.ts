@@ -215,6 +215,8 @@ export class AuraSettings extends LitElement {
 
   private _renderSkills() {
     const skills = this.config!.behavior?.skills ?? [];
+    const allTools = this.config!.behavior?.tools ?? [];
+
     if (skills.length === 0) return html`<p style="color: var(--aura-color-text-muted); font-size: 13px;">No skills configured.</p>`;
 
     return html`
@@ -225,13 +227,25 @@ export class AuraSettings extends LitElement {
           <span>${getSkillDisplayName(skill)}</span>
           ${skill.category ? html`<span style="font-size:11px;color:var(--aura-color-text-muted)">(${skill.category})</span>` : nothing}
         </div>
-        ${(skill.tools ?? []).map(tool => html`
-          <div class="check-item check-sub">
-            <input type="checkbox" .checked=${tool.enabled !== false}
-              @change=${(e: Event) => this._toggleSkillTool(skill.name, tool.name, (e.target as HTMLInputElement).checked)} />
-            <span>${getToolDisplayName(tool)}</span>
-          </div>
-        `)}
+        ${(skill.tools ?? []).map(toolName => {
+      const tool = allTools.find(t => t.name === toolName);
+      if (!tool) {
+        return html`
+              <div class="check-item check-sub missing">
+                <input type="checkbox" disabled />
+                <span>${toolName}</span>
+                <span class="error-icon" title="Tool not found in global tools list">⚠️ Missing</span>
+              </div>
+            `;
+      }
+      return html`
+            <div class="check-item check-sub">
+              <input type="checkbox" .checked=${tool.enabled !== false}
+                @change=${(e: Event) => this._toggleSkillTool(skill.name, tool.name, (e.target as HTMLInputElement).checked)} />
+              <span>${getToolDisplayName(tool)}</span>
+            </div>
+          `;
+    })}
       `)}
     `;
   }
@@ -263,7 +277,7 @@ export class AuraSettings extends LitElement {
     const lockingSkills: string[] = [];
     for (const skill of skills) {
       if (skill.enabled === false) continue;
-      if (skill.tools?.some(t => t.name === tool.name)) {
+      if (skill.tools?.includes(tool.name)) {
         lockingSkills.push(getSkillDisplayName(skill));
       }
     }

@@ -3,6 +3,7 @@
  * ────────────────────────────────────────────────────────────────── */
 
 import type { Skill, SkillSummary, Tool } from '../types/index.js';
+import { toolRegistry } from '../tools/tool-registry.js';
 
 export class SkillRegistry {
     private _skills: Map<string, Skill> = new Map();
@@ -45,9 +46,18 @@ export class SkillRegistry {
     getDetail(name: string): { systemPrompt: string; tools: Tool[] } | null {
         const skill = this._skills.get(name);
         if (!skill || skill.enabled === false) return null;
+
+        const resolvedTools: Tool[] = [];
+        for (const toolName of (skill.tools ?? [])) {
+            const tool = toolRegistry.get(toolName);
+            if (tool && tool.enabled !== false) {
+                resolvedTools.push(tool);
+            }
+        }
+
         return {
             systemPrompt: skill.systemPrompt,
-            tools: (skill.tools ?? []).filter(t => t.enabled !== false),
+            tools: resolvedTools,
         };
     }
 

@@ -206,27 +206,22 @@ const reportSkill: Skill = {
   category: 'Data',
   systemPrompt: 'You are a report generation assistant.',
   enabled: true,
-  tools: [
-    {
-      name: 'fetch_data',
-      title: 'Fetch Data',
-      description: 'Fetches report data from the warehouse.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          reportType: { type: 'string', enum: ['sales', 'analytics'] },
-        },
-        required: ['reportType'],
-      },
-      execute: async (input) => ({
-        content: [{ type: 'text', text: `Data for ${input.reportType}` }],
-      }),
-    },
-  ],
+  tools: ['fetch_data'], // Reference tools by name
 };
 
-// Register via config
-behavior: { skills: [reportSkill] }
+const fetchDataTool: Tool = {
+  name: 'fetch_data',
+  title: 'Fetch Data',
+  description: 'Fetches report data from the warehouse.',
+  inputSchema: { /* ... */ },
+  execute: async (input) => ({ /* ... */ }),
+};
+
+// Register both via config
+behavior: { 
+  skills: [reportSkill],
+  tools: [fetchDataTool] 
+}
 ```
 
 When a skill is **disabled**, its tools are also disabled. Toggling is available in the Settings modal.

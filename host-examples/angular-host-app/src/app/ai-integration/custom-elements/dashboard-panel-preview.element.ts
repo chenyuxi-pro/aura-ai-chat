@@ -1,12 +1,11 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, Input } from '@angular/core';
 import type { PanelConfig, PanelData } from '../../core/models/panel.model';
 
 @Component({
-  selector: 'app-dashboard-panel-preview-element',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-dashboard-panel-preview-element',
+    imports: [],
+    template: `
     <section class="preview-card">
       <header class="preview-header">
         <span class="preview-type">{{ panelConfig?.type }}</span>
@@ -39,8 +38,8 @@ import type { PanelConfig, PanelData } from '../../core/models/panel.model';
       </footer>
     </section>
   `,
-  styles: [
-    `
+    styles: [
+        `
       :host {
         display: block;
       }
@@ -129,7 +128,7 @@ import type { PanelConfig, PanelData } from '../../core/models/panel.model';
         color: #61798b;
       }
     `,
-  ],
+    ]
 })
 export class DashboardPanelPreviewElementComponent {
   @Input() panelConfig: PanelConfig | null = null;

@@ -12,7 +12,7 @@ import {
   signal,
   runInInjectionContext,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import type { AuraConfig } from 'aura-ai-chat';
 import { AngularSplitModule } from 'angular-split';
 import type { IOutputData } from 'angular-split';
@@ -31,19 +31,17 @@ interface AuraWidgetElement extends HTMLElement {
 }
 
 @Component({
-  selector: 'app-dashboard',
-  standalone: true,
-  imports: [
-    CommonModule,
+    selector: 'app-dashboard',
+    imports: [
     AngularSplitModule,
     TablePanelComponent,
     LineChartPanelComponent,
     BarChartPanelComponent,
-    StatCardPanelComponent,
-  ],
-  templateUrl: './dashboard.component.html',
-  styleUrl: './dashboard.component.scss',
-  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    StatCardPanelComponent
+],
+    templateUrl: './dashboard.component.html',
+    styleUrl: './dashboard.component.scss',
+    schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly injector = inject(Injector);

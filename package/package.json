@@ -20,7 +20,7 @@
     "start": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "dev": "npm run build --watch && vite"
+    "dev": "npm run build && vite"
   },
   "dependencies": {
     "dompurify": "^3.2.0",

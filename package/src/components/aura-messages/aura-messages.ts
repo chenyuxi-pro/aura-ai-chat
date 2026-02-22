@@ -7,6 +7,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { MessageRole } from '../../types/index.js';
 import type { Message, SuggestedPrompt } from '../../types/index.js';
 import type { CopilotLoginStatus, DeviceFlowInfo } from '../../providers/github-copilot-provider.js';
 import styles from './aura-messages.css?inline';
@@ -159,17 +160,16 @@ export class AuraMessages extends LitElement {
   }
 
   private _renderMessage(msg: Message) {
-    const isUser = msg.role === 'user';
-    const isError = msg.role === 'error';
+    const isUser = msg.role === MessageRole.User;
+    const isError = msg.role === MessageRole.Error;
     const roleClass = isError ? 'assistant error' : msg.role;
     const avatarClass = isUser ? 'user-avatar' : isError ? 'error-avatar' : 'ai';
     const avatarContent = isUser
       ? '👤'
-      : isError
-        ? '⚠'
-        : this.aiIcon
-          ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
-          : this.aiName.charAt(0).toUpperCase();
+      : this.aiIcon
+        ? html`<span class="material-symbols-outlined avatar-icon">${this.aiIcon}</span>`
+        : this.aiName.charAt(0).toUpperCase();
+
     return html`
       <div class="message ${roleClass}">
         <div class="avatar ${avatarClass}">

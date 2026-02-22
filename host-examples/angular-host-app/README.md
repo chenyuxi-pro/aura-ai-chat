@@ -1,6 +1,6 @@
 # Angular Host App Demo for `aura-ai-chat`
 
-This app is a realistic Angular 17 standalone host for the `aura-ai-chat` web component.
+This app is a realistic Angular 21 standalone host for the `aura-ai-chat` web component.
 It demonstrates dashboard workflows, AI tools, preview elements, conversation persistence, and built-in GitHub Copilot auth with Angular dev-server proxying.
 
 ## Purpose
@@ -18,7 +18,7 @@ It covers:
 
 ## Tech Stack
 
-- Angular 17 standalone components + signals
+- Angular 21 standalone components + signals
 - `aura-ai-chat` (local package dependency: `file:../../package`)
 - `ag-grid-angular` + `ag-grid-community`
 - `ngx-echarts` + `echarts`

@@ -332,9 +332,8 @@
 }
 
 .avatar.error-avatar {
-    background: rgba(239, 68, 68, 0.15);
-    color: #f87171;
-    font-size: 15px;
+    background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+    color: #fff;
 }
 
 .bubble {
@@ -357,9 +356,9 @@
 
 .message.error .bubble {
     background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.4);
     border-bottom-left-radius: 6px;
-    color: #f87171;
+    color: var(--aura-color-text, #e2e4ed);
 }
 
 /* ── Markdown in bubbles ───────────────────────────────── */

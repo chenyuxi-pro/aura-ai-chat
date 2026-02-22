@@ -9,7 +9,15 @@ export default defineConfig({
             fileName: 'aura-ai-chat',
         },
         rollupOptions: {
-            external: ['lit', 'marked', 'dompurify'],
+            // Keep Lit (and its subpath imports) external so all directives/runtime
+            // resolve to the same instance in host apps (avoids directive mismatches).
+            external: [
+                /^lit(\/.*)?$/,
+                /^lit-html(\/.*)?$/,
+                /^@lit\/.*/,
+                'marked',
+                'dompurify',
+            ],
         },
         outDir: 'dist',
         sourcemap: true,
