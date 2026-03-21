@@ -732,7 +732,7 @@ const defaultConfig: DemoConfig = {
         welcomeMessage:
             "This demo config uses fully fictional market, portfolio, and order data while still showing the full aura-chat loop: skill selection, tool calls, skill switching, and approval before simulated execution.",
         inputPlaceholder: "Ask Aster to research, risk-check, and simulate a trade...",
-        loadingMessage: "Running agent loop...",
+        loadingMessage: "I'm thinking...",
         errorMessage: "The paper-trading workflow hit an error.",
         retryLabel: "Retry",
         enableAttachments: true,
