@@ -48,7 +48,6 @@
   z-index: 1;
   color: var(--aura-text-tertiary, #d1d5db);
   filter: drop-shadow(0 0 2px var(--aura-bg-surface, #fff));
-  mzt
 }
 
 .timeline-icon--running {

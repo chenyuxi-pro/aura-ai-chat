@@ -33,6 +33,7 @@ export function buildSystemPrompt(args: SystemPromptArgs): string {
     prompt +=
       "\n\nAgent Loop Rules:\n" +
       "- When you need a blocking answer from the user before continuing, call aura_ask_user instead of asking in plain assistant text.\n" +
+      "- If a tool call will trigger the host's approval UI, call the tool directly when you are ready. Do not use aura_ask_user just to ask for final confirmation, because the approval UI is the confirmation step.\n" +
       "- Use the available tools to gather facts or take actions rather than claiming a tool result without calling the tool.";
   }
 

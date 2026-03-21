@@ -50,6 +50,54 @@ type CopilotToken = {
   expires_at: number;
 };
 
+function extractErrorMessage(payload: unknown): string | null {
+  if (typeof payload === "string") {
+    const value = payload.trim();
+    return value || null;
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const message = extractErrorMessage(item);
+      if (message) return message;
+    }
+    return null;
+  }
+
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+  const candidates = [
+    record.message,
+    record.error_description,
+    record.detail,
+    record.title,
+  ];
+
+  for (const candidate of candidates) {
+    const message = extractErrorMessage(candidate);
+    if (message) return message;
+  }
+
+  const errorValue = record.error;
+  if (typeof errorValue === "string") {
+    const value = errorValue.trim();
+    if (value) return value;
+  }
+
+  if (errorValue && typeof errorValue === "object") {
+    const message = extractErrorMessage(errorValue);
+    if (message) return message;
+  }
+
+  for (const key of ["errors", "details", "issues"]) {
+    const message = extractErrorMessage(record[key]);
+    if (message) return message;
+  }
+
+  return null;
+}
+
 function toCopilotMessages(messages: ProviderMessage[]): Array<Record<string, unknown>> {
   return messages.map((message) => {
     const toolCalls = message.tool_calls ?? message.toolCalls;
@@ -304,7 +352,10 @@ export class GitHubCopilotProvider extends BaseProvider {
 
     if (!response.ok) {
       this.setLoginStatus("error");
-      throw new Error("Failed to acquire GitHub Copilot token.");
+      throw await this.buildApiError(
+        response,
+        "Failed to acquire GitHub Copilot token",
+      );
     }
 
     const payload = (await response.json()) as CopilotToken;
@@ -397,7 +448,7 @@ export class GitHubCopilotProvider extends BaseProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Copilot chat request failed: ${response.statusText}`);
+      throw await this.buildApiError(response, "Copilot chat request failed");
     }
 
     const payload = (await response.json()) as {
@@ -441,7 +492,7 @@ export class GitHubCopilotProvider extends BaseProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Copilot stream request failed: ${response.statusText}`);
+      throw await this.buildApiError(response, "Copilot stream request failed");
     }
 
     const reader = response.body?.getReader();
@@ -502,5 +553,35 @@ export class GitHubCopilotProvider extends BaseProvider {
     this.copilotToken = null;
     localStorage.removeItem("aura_github_token");
     this.setLoginStatus("not_logged_in");
+  }
+
+  private async buildApiError(
+    response: Response,
+    fallbackPrefix: string,
+  ): Promise<Error> {
+    const apiMessage = await this.readApiErrorMessage(response);
+    if (apiMessage) return new Error(apiMessage);
+    return new Error(`${fallbackPrefix}: ${this.formatHttpError(response)}`);
+  }
+
+  private async readApiErrorMessage(response: Response): Promise<string | null> {
+    try {
+      const raw = (await response.text()).trim();
+      if (!raw) return null;
+
+      try {
+        return extractErrorMessage(JSON.parse(raw)) ?? raw;
+      } catch {
+        return raw;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  private formatHttpError(response: Response): string {
+    const statusText = response.statusText.trim();
+    if (statusText) return `HTTP ${response.status} ${statusText}`;
+    return `HTTP ${response.status}`;
   }
 }

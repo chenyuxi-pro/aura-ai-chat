@@ -252,6 +252,22 @@ const portfolioBook = {
     ],
 };
 
+type BookPosition = (typeof portfolioBook.positions)[number];
+
+type CloseTradeCardData = {
+    symbol: string;
+    companyName: string;
+    currentSide: string;
+    exitAction: string;
+    quantityLabel: string;
+    avgPriceLabel: string;
+    marketPriceLabel: string;
+    marketValueLabel: string;
+    pnlDayLabel: string;
+    venue: string;
+    summary: string;
+};
+
 function normalizeSymbol(value: unknown): string {
     return String(value ?? "").trim().toUpperCase();
 }
@@ -310,6 +326,181 @@ function lookupNews(symbolInput: unknown) {
 function lookupPosition(symbolInput: unknown) {
     const symbol = normalizeSymbol(symbolInput);
     return portfolioBook.positions.find((position) => position.symbol === symbol) ?? null;
+}
+
+function formatUnits(value: number): string {
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function getCloseSide(position: BookPosition): "buy" | "sell" {
+    return position.side === "long" ? "sell" : "buy";
+}
+
+function requireOpenPosition(symbolInput: unknown): BookPosition {
+    const symbol = normalizeSymbol(symbolInput);
+    const position = lookupPosition(symbol);
+    if (!position) {
+        throw new Error(
+            `No open position was found for ${symbol}. Ask the user which of these open trades to close instead: ${portfolioBook.positions
+                .map((item) => item.symbol)
+                .join(", ")}.`,
+        );
+    }
+    return position;
+}
+
+function buildCloseTradeCard(symbolInput: unknown): CloseTradeCardData {
+    const position = requireOpenPosition(symbolInput);
+    const market = lookupMarket(position.symbol);
+    const exitSide = getCloseSide(position);
+    const marketValueUsd = Math.abs(position.marketValueUsd);
+
+    return {
+        symbol: position.symbol,
+        companyName: market.name,
+        currentSide: position.side,
+        exitAction: exitSide === "sell" ? "Sell to close" : "Buy to cover",
+        quantityLabel: formatUnits(position.quantity),
+        avgPriceLabel: formatUsd(position.avgPrice),
+        marketPriceLabel: formatUsd(market.last),
+        marketValueLabel: formatUsd(marketValueUsd),
+        pnlDayLabel: formatUsd(position.pnlDayUsd),
+        venue: market.venue,
+        summary:
+            `${exitSide === "sell" ? "Sell" : "Buy"} ${formatUnits(position.quantity)} ${position.symbol} (${market.name}) ` +
+            `at about ${formatUsd(market.last)} to close the ${position.side} position.`,
+    };
+}
+
+class DemoCloseTradeCard extends HTMLElement {
+    private trade: CloseTradeCardData | null = null;
+
+    set data(value: CloseTradeCardData | null) {
+        this.trade = value;
+        this.render();
+    }
+
+    connectedCallback(): void {
+        if (!this.shadowRoot) {
+            this.attachShadow({ mode: "open" });
+        }
+        this.render();
+    }
+
+    private render(): void {
+        if (!this.shadowRoot || !this.trade) return;
+
+        this.shadowRoot.innerHTML = `
+            <style>
+                :host {
+                    display: block;
+                    font-family: Inter, system-ui, sans-serif;
+                }
+
+                .card {
+                    border: 1px solid rgba(15, 23, 42, 0.12);
+                    border-radius: 12px;
+                    padding: 12px;
+                    background:
+                        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+                        #fff;
+                    color: #0f172a;
+                }
+
+                .eyebrow {
+                    margin: 0 0 6px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    color: #64748b;
+                }
+
+                .title {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                .summary {
+                    margin: 6px 0 12px;
+                    font-size: 13px;
+                    line-height: 1.45;
+                    color: #334155;
+                }
+
+                .grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 10px;
+                }
+
+                .metric {
+                    padding: 10px;
+                    border-radius: 10px;
+                    background: #f8fafc;
+                    border: 1px solid rgba(148, 163, 184, 0.22);
+                }
+
+                .label {
+                    display: block;
+                    margin-bottom: 4px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    color: #64748b;
+                }
+
+                .value {
+                    display: block;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #0f172a;
+                }
+            </style>
+            <div class="card">
+                <p class="eyebrow">Human Approval (**Injected from Host App)</p>
+                <h4 class="title">${this.trade.exitAction} ${this.trade.symbol}</h4>
+                <p class="summary">${this.trade.summary}</p>
+                <div class="grid">
+                    <div class="metric">
+                        <span class="label">Position</span>
+                        <span class="value">${this.trade.currentSide} ${this.trade.quantityLabel} units</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Instrument</span>
+                        <span class="value">${this.trade.companyName}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Average Price</span>
+                        <span class="value">${this.trade.avgPriceLabel}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Venue</span>
+                        <span class="value">${this.trade.venue}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Market Value</span>
+                        <span class="value">${this.trade.marketValueLabel}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Market Price</span>
+                        <span class="value">${this.trade.marketPriceLabel}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">P&L Today</span>
+                        <span class="value">${this.trade.pnlDayLabel}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+if (!customElements.get("demo-close-trade-card")) {
+    customElements.define("demo-close-trade-card", DemoCloseTradeCard);
 }
 
 function evaluateOrder(args: Record<string, unknown>) {
@@ -569,10 +760,50 @@ const sampleTools: DemoTool[] = [
         },
     },
     {
+        name: "list_open_trades",
+        title: "List Open Trades",
+        risk: AuraToolRisk.Safe,
+        description: "Returns the current simulated open positions that are available to close.",
+        inputSchema: {
+            type: "object",
+            properties: {},
+        },
+        execute: async () => {
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text:
+                            `The open demo trades are ${portfolioBook.positions
+                                .map((position) => position.symbol)
+                                .join(", ")}.`,
+                    },
+                    {
+                        type: "json",
+                        label: "Open Trades",
+                        data: portfolioBook.positions.map((position) => {
+                            const market = lookupMarket(position.symbol);
+                            return {
+                                symbol: position.symbol,
+                                name: market.name,
+                                side: position.side,
+                                quantity: position.quantity,
+                                avgPrice: position.avgPrice,
+                                marketPrice: market.last,
+                                marketValueUsd: position.marketValueUsd,
+                                pnlDayUsd: position.pnlDayUsd,
+                            };
+                        }),
+                    },
+                ],
+            };
+        },
+    },
+    {
         name: "place_limit_order",
         title: "Place Limit Order",
         risk: AuraToolRisk.Destructive,
-        description: "Places a live limit order on the execution desk. Requires user approval.",
+        description: "Places a simulated limit order on the execution desk. Requires user approval.",
         inputSchema: {
             type: "object",
             properties: {
@@ -632,53 +863,63 @@ const sampleTools: DemoTool[] = [
         },
     },
     {
-        name: "place_protective_stop",
-        title: "Place Protective Stop",
+        name: "close_trade_position",
+        title: "Close Trade Position",
         risk: AuraToolRisk.Destructive,
-        description: "Places a protective stop order against an existing or newly opened long position.",
+        description: "Closes one existing simulated trade. Requires explicit user approval before execution.",
         inputSchema: {
             type: "object",
             properties: {
-                symbol: { type: "string", description: "Ticker or asset symbol" },
-                quantity: { type: "number", description: "Units to protect" },
-                stopPrice: { type: "number", description: "Stop trigger price" },
+                symbol: {
+                    type: "string",
+                    description: "The symbol of the existing open position to close, for example ALTO or PYRA",
+                },
             },
-            required: ["symbol", "quantity", "stopPrice"],
+            required: ["symbol"],
         },
         preview: {
-            buildContent: async (args: Record<string, unknown>) => [
-                {
-                    type: "text",
-                    text:
-                        `Protect ${toNumber(args.quantity, 0)} ${normalizeSymbol(args.symbol)} with a sell stop at ` +
-                        `${formatUsd(toNumber(args.stopPrice, 0))}.`,
-                },
-            ],
+            buildContent: async (args: Record<string, unknown>) => {
+                const trade = buildCloseTradeCard(args.symbol);
+                return [
+                    {
+                        type: "custom-element",
+                        element: "demo-close-trade-card",
+                        props: { data: trade },
+                    },
+                ];
+            },
         },
         execute: async (input: Record<string, unknown>, ctx) => {
-            const symbol = normalizeSymbol(input.symbol);
-            const quantity = Math.max(toNumber(input.quantity, 0), 0);
-            const stopPrice = toNumber(input.stopPrice, 0);
-            const stopId = `stop_${Date.now().toString(36)}`;
+            const position = requireOpenPosition(input.symbol);
+            const market = lookupMarket(position.symbol);
+            const exitSide = getCloseSide(position);
+            const closeId = `close_${Date.now().toString(36)}`;
+            const notionalUsd = Number((position.quantity * market.last).toFixed(2));
+
             return {
                 content: [
                     {
                         type: "text",
                         text:
-                            `Protective stop ${stopId} accepted for ${quantity} ${symbol} at ${formatUsd(stopPrice)}.`,
+                            `${exitSide === "sell" ? "Sold" : "Bought to cover"} ${formatUnits(position.quantity)} ${position.symbol} ` +
+                            `at ${formatUsd(market.last)} to close the ${position.side} position.`,
                     },
                     {
                         type: "json",
-                        label: "Protective Stop",
+                        label: "Close Trade Ticket",
                         data: {
-                            stopId,
-                            status: "accepted",
-                            symbol,
-                            side: "sell",
-                            quantity,
-                            stopPrice,
+                            closeId,
+                            status: "closed",
+                            symbol: position.symbol,
+                            action: exitSide === "sell" ? "sell to close" : "buy to cover",
+                            quantity: position.quantity,
+                            executedPrice: market.last,
+                            notionalUsd,
+                            previousSide: position.side,
                             submittedBy: ctx.userId ?? "unknown-user",
                             conversationId: ctx.conversationId,
+                            desk: portfolioBook.desk,
+                            marketValueUsd: position.marketValueUsd,
                         },
                     },
                 ],
@@ -692,7 +933,7 @@ const sampleSkills: DemoSkill[] = [
         name: "Market Analyst",
         description: "Researches setups with market and sentiment tools before any trade is sized.",
         instructions:
-            "You are the desk market analyst. Use both market and sentiment tools when the user wants conviction, catalysts, or a trade idea. When the task moves from research into sizing or limits, switch to the Risk Manager skill. Do not execute trades from this skill.",
+            "You are the desk market analyst. Stay in this skill when the task is purely research. Use both get_market_snapshot and scan_news_sentiment when the user wants a full read on one symbol. Switch to Risk Manager only when the task becomes a sizing or limits question.",
         tools: ["get_market_snapshot", "scan_news_sentiment"],
         metadata: { category: "Research" },
     },
@@ -700,17 +941,33 @@ const sampleSkills: DemoSkill[] = [
         name: "Risk Manager",
         description: "Checks the live book, concentration, and VaR before any execution decision.",
         instructions:
-            "You are the desk risk manager. Always inspect portfolio exposure before or alongside a risk limit check. If the user wants to place a trade and risk is acceptable, switch to the Execution Trader skill to send orders. If trade details are missing, ask the user instead of guessing.",
+            "You are the desk risk manager. Use get_portfolio_exposure and check_risk_limits to size or challenge a proposed trade. Switch to Execution Trader only after the request clearly becomes an execution task.",
         tools: ["get_portfolio_exposure", "check_risk_limits"],
         metadata: { category: "Risk" },
     },
     {
         name: "Execution Trader",
-        description: "Sends orders only after research and risk checks are complete.",
+        description: "Handles simulated order entry that requires approval before execution.",
         instructions:
-            "You are the execution trader. Only use execution tools after the research and risk work is already done or explicitly waived by the user. If an order instruction is missing quantity, price, or stop level, call aura_ask_user. Every execution tool requires approval before it runs.",
-        tools: ["place_limit_order", "place_protective_stop"],
+            "You are the execution trader. Call place_limit_order directly when the user already provided the execution details. Do not ask for a second confirmation in chat because the approval UI shown after the tool call is the final confirmation step.",
+        tools: ["place_limit_order"],
         metadata: { category: "Execution" },
+    },
+    {
+        name: "Trade Closer",
+        description: "Handles the human-in-the-loop close-trade workflow with a host approval card.",
+        instructions:
+            "Use aura_ask_user only if the user wants to close a trade but has not named a currently open symbol yet. Once the user names a valid open trade, call close_trade_position immediately. Do not ask for a second confirmation in chat because close_trade_position already opens the approval UI. Use list_open_trades only if the user asks what is open.",
+        tools: ["list_open_trades", "close_trade_position"],
+        metadata: { category: "Execution" },
+    },
+    {
+        name: "General Operations",
+        description: "Covers operational desk questions when no specialist skill is a clean fit.",
+        instructions:
+            "Use this skill for broad operational questions that do not clearly belong to research, risk, or execution. Prefer tools over guessing, especially for open trades and desk exposure.",
+        tools: ["list_open_trades", "get_portfolio_exposure"],
+        metadata: { category: "General" },
     },
 ];
 
@@ -726,41 +983,41 @@ const defaultConfig: DemoConfig = {
     },
     appearance: {
         theme: "professional-light",
-        headerTitle: "Aster Trader",
-        headerIcon: "candlestick_chart",
-        welcomeMessageTitle: "Paper Trading Demo",
+        headerTitle: "Aster Agentic Demo",
+        headerIcon: "account_tree",
+        welcomeMessageTitle: "Skills And HITL Demo",
         welcomeMessage:
-            "This demo config uses fully fictional market, portfolio, and order data while still showing the full aura-chat loop: skill selection, tool calls, skill switching, and approval before simulated execution.",
-        inputPlaceholder: "Ask Aster to research, risk-check, and simulate a trade...",
+            "This demo includes four showcase paths: one-skill with multiple tools, multi-skill orchestration, human-in-the-loop approval, and a fallback general-operations path when no specialist skill is a clean fit.",
+        inputPlaceholder: "Try one of the showcase prompts below...",
         loadingMessage: "I'm thinking...",
-        errorMessage: "The paper-trading workflow hit an error.",
+        errorMessage: "The showcase workflow hit an error.",
         retryLabel: "Retry",
         enableAttachments: true,
         maxAttachmentSize: 10_485_760,
         suggestedPrompts: [
             {
-                title: "Research Stack",
-                description: "Use multiple research tools inside one skill.",
+                title: "HITL Close Trade",
+                description: "Tests the human-in-the-loop approval path. The agent should go straight to `close_trade_position` and wait for the host approval card, without asking for a second confirmation in chat.",
                 promptText:
-                    "Give me an ORB brief with a market snapshot, news sentiment, and tell me how exposed the desk already is.",
+                    "Close my ALTO trade.",
             },
             {
-                title: "Cross-Skill Risk",
-                description: "Research first, then switch into risk mode.",
+                title: "Multi Skill Flow",
+                description: "Tests cross-skill orchestration. The agent should move from `Market Analyst` to `Risk Manager` to `Execution Trader`, then stop on the approval step before execution.",
                 promptText:
-                    "Check NOVA momentum, then switch to risk and tell me whether buying 120 shares at 871.50 would push the desk over any limits.",
+                    "Work this NOVA trade end to end: research the setup, switch to risk and check whether buying 120 shares at 871.50 fits the desk, then if limits pass switch to execution and place the order.",
             },
             {
-                title: "End-to-End Trade",
-                description: "Run research, risk, execution, and protective stop.",
+                title: "One Skill Many Tools",
+                description: "Tests one-skill orchestration. The agent should stay in `Market Analyst` and use both `get_market_snapshot` and `scan_news_sentiment` for the same symbol.",
                 promptText:
-                    "Work this ALTO trade end to end: research the setup, switch to risk and check whether buying 100 shares at 207.50 fits the desk, then if limits pass switch to execution and place the order plus a protective stop at 201.",
+                    "Give me a full ALTO read using market data and news sentiment, but keep it in research mode only.",
             },
             {
-                title: "Ask For Missing Details",
-                description: "Let the agent request what it still needs.",
+                title: "Fallback Tool Use",
+                description: "Tests the fallback/general-operations path. No specialist skill is a clean fit, so the agent should still pick a practical tool-using path to answer the question.",
                 promptText:
-                    "I want a semis trade today. Use the right skills and ask me whatever you still need before you execute anything.",
+                    "I do not need research or execution, just tell me what open trades the desk has and how much cash is left.",
             },
         ],
     },
@@ -775,15 +1032,15 @@ const defaultConfig: DemoConfig = {
     ],
     agent: {
         appSystemPrompt:
-            "You are Aster, the AI trader for a simulated multi-asset desk. Work agentically: select the right skill, gather facts with tools instead of guessing, switch skills when the job moves from research to risk to execution, and keep the user updated with crisp trading rationale. Never send a simulated order without explicit approval.",
+            "You are Aster, the simulated desk assistant for an agentic showcase demo. Select the skill that best matches the task, use tools instead of guessing, switch skills when the job changes, and rely on the host approval UI for final confirmation on destructive actions. Use `Trade Closer` for close-trade requests, `Execution Trader` for placing simulated orders, `Market Analyst` for research, `Risk Manager` for sizing and limits, and `General Operations` when no specialist skill is a clean fit.",
         additionalSafetyInstructions:
-            "Do not imply any real market connectivity. All fills, prices, approvals, and portfolio data in this demo are fictional. If execution details are missing, ask the user before calling an order tool.",
+            "Everything in this demo is fictional. The suggested prompts are meant to test four explicit behaviors: human-in-the-loop approval, multi-skill switching, one-skill multi-tool use, and fallback tool use when no specialist skill cleanly matches the request.",
         skills: sampleSkills,
         tools: sampleTools,
         conversationManager,
         maxContextTokens: 4096,
         enableStreaming: true,
-        maxIterations: 12,
+        maxIterations: 8,
         showThinkingProcess: true,
         toolTimeout: 30_000,
         confirmationTimeoutMs: 65_000,
