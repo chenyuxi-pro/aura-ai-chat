@@ -1,561 +1,489 @@
-# ✦ Aura AI Chat
+# Aura AI Chat
 
-A **production-grade, framework-agnostic AI chat widget** built as a Web Component library with [Lit 3.x](https://lit.dev/). Drop `<aura-chat>` into any application — vanilla JS, React, Angular, Vue — and get a fully featured AI assistant with streaming, skills, tools, conversation history, and theming out of the box.
+Aura AI Chat is a framework-agnostic AI chat widget built as a Web Component library with Lit 3. Drop `<aura-chat>` into a browser app and wire it up with providers, skills, tools, conversation storage, and host-controlled approvals.
 
-<!-- screenshot / GIF placeholder -->
-<!-- ![Aura Widget demo](./docs/demo-screenshot.png) -->
+## Latest changes
 
----
+- The widget now runs an agentic loop with iteration tracking, skill selection, tool calls, ask-user steps, and step-by-step timeline rendering.
+- Human-in-the-loop flows support `safe`, `moderate`, and `destructive` tool risk levels, preview content, timeout handling, and inline approval/rejection UI.
+- A new `aura-event-monitor` component can display live widget events, including agent loop and tool telemetry.
+- WebMCP support can export Aura tools to the page and import compatible tools from `navigator.mcp`.
+- The demo has been refreshed around multi-skill orchestration, close-trade approvals, and a richer event log.
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [AuraConfig Reference](#auraconfig-reference)
-- [AI Provider Guide](#ai-provider-guide)
-- [Skills Guide](#skills-guide)
-- [Tools Guide](#tools-guide)
-- [Custom Message Components](#custom-message-components)
-- [Theming](#theming)
-- [Demo](#demo)
-- [Architecture](#architecture)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
-## Quick Start
-
-### Install
+## Install
 
 ```bash
 npm install aura-ai-chat
 ```
 
-### Basic Usage
+## Quick start
 
 ```html
 <script type="module">
-  import 'aura-ai-chat';
-</script>
+  import "aura-ai-chat";
 
-<aura-chat id="chat"></aura-chat>
+  const memory = new Map();
 
-<script type="module">
-  const chat = document.getElementById('chat');
-
-  chat.config = {
-    identity: {
-      appId: 'my-app',
-      ownerId: 'org-1',
-      tenantId: 'tenant-1',
-      userId: 'user-1',
-      aiName: 'Aria',
+  const conversationManager = {
+    async createConversation(conversation) {
+      const value = conversation ?? {
+        id: crypto.randomUUID(),
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        title: "New conversation",
+      };
+      memory.set(value.id, value);
+      return value;
     },
-    header: { title: 'Aria' },
-    welcome: {
-      title: 'Hello!',
-      message: 'How can I help you today?',
+    async loadConversation(id) {
+      return memory.get(id) ?? null;
+    },
+    async listConversations() {
+      return [...memory.values()];
+    },
+    async saveMessage(id, message) {
+      const conversation =
+        memory.get(id) ??
+        (await this.createConversation({
+          id,
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }));
+
+      conversation.messages.push(message);
+      conversation.updatedAt = Date.now();
+      memory.set(id, conversation);
+    },
+  };
+
+  const tool = {
+    name: "lookup_order",
+    description: "Fetch an order summary by id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        orderId: { type: "string" },
+      },
+      required: ["orderId"],
+    },
+    async execute(args, ctx) {
+      return {
+        content: [
+          {
+            type: "json",
+            label: "Order",
+            data: {
+              orderId: args.orderId,
+              status: "processing",
+              requestedBy: ctx.userId ?? "unknown",
+            },
+          },
+        ],
+      };
+    },
+  };
+
+  const widget = document.querySelector("aura-chat");
+  widget.config = {
+    identity: {
+      appMetadata: {
+        appId: "orders-app",
+        teamId: "operations",
+        tenantId: "tenant-1",
+        userId: "user-42",
+      },
+      aiName: "Aster",
+    },
+    appearance: {
+      headerTitle: "Aster",
+      welcomeMessageTitle: "Need help?",
+      welcomeMessage: "Ask about orders, approvals, or operational follow-up.",
+      inputPlaceholder: "Message Aster...",
       suggestedPrompts: [
-        { label: '👋 Say hello', prompt: 'Hello!' },
+        {
+          title: "Check an order",
+          promptText: "Look up order ORD-1042",
+        },
       ],
+      theme: "professional-light",
     },
     providers: [
-      { type: 'built-in', providerId: 'openai', apiKey: 'sk-...' },
+      {
+        type: "built-in",
+        id: "gitHubCopilot",
+        config: {
+          rememberToken: true,
+        },
+      },
     ],
-    behavior: {
-      systemPrompt: 'You are a helpful assistant.',
-      temperature: 0.7,
-      maxTokens: 4096,
+    agent: {
+      appSystemPrompt: "You are a helpful operations assistant.",
+      tools: [tool],
+      conversationManager,
+      enableStreaming: true,
+      maxContextTokens: 4096,
+      maxIterations: 8,
+      showThinkingProcess: true,
+      toolTimeout: 30000,
+      confirmationTimeoutMs: 65000,
+      enableWebMcp: false,
     },
-    conversation: {
-      async createConversation() { /* ... */ },
-      async listConversations() { /* ... */ },
-      async getMessages(id) { /* ... */ },
-      async saveMessage(id, msg) { /* ... */ },
+    onAuraEvent(event) {
+      console.log("Aura event", event.type, event.payload);
     },
-    ui: { theme: 'dark' },
+  };
+</script>
+
+<aura-chat></aura-chat>
+```
+
+## Configuration
+
+```ts
+interface AuraConfig {
+  identity: AuraIdentityConfig;
+  appearance?: AuraAppearanceConfig;
+  providers?: ProviderConfig[];
+  agent?: AuraAgentConfig;
+  history?: { manager?: IConversationManager };
+  onAuraEvent?: (event: AuraEvent) => void;
+  settingsModalConfig?: SettingsModalConfig;
+}
+```
+
+### `identity`
+
+```ts
+interface AuraIdentityConfig {
+  appMetadata: {
+    appId: string;
+    teamId: string;
+    tenantId?: string;
+    userId?: string;
+  };
+  aiName?: string;
+}
+```
+
+### `appearance`
+
+Use `appearance` to control titles, welcome content, input copy, attachments, and theme.
+
+```ts
+interface AuraAppearanceConfig {
+  headerTitle?: string;
+  headerIcon?: string;
+  welcomeMessageTitle?: string;
+  welcomeMessage?: string;
+  suggestedPrompts?: SuggestedPrompt[];
+  inputPlaceholder?: string;
+  loadingMessage?: string;
+  errorMessage?: string;
+  retryLabel?: string;
+  enableAttachments?: boolean;
+  maxAttachmentSize?: number;
+  allowedAttachmentTypes?: string[];
+  theme?: "light" | "dark" | "professional-light" | "auto";
+  primaryColor?: string;
+  fontFamily?: string;
+}
+```
+
+### `agent`
+
+`agent` is the current control surface for system prompting, skills, tools, conversation storage, and orchestration behavior.
+
+```ts
+interface AuraAgentConfig {
+  appSystemPrompt?: string;
+  additionalSafetyInstructions?: string;
+  resources?: AuraResource[];
+  skills?: Skill[];
+  tools?: AuraTool[];
+  conversationManager?: IConversationManager;
+  conversationId?: string;
+  maxContextTokens?: number;
+  enableStreaming?: boolean;
+  maxIterations?: number;
+  showThinkingProcess?: boolean;
+  toolTimeout?: number;
+  confirmationTimeoutMs?: number;
+  enableWebMcp?: boolean;
+}
+```
+
+Notes:
+
+- `conversationManager` is the preferred place for chat persistence. `history.manager` is still supported as a fallback.
+- `showThinkingProcess` controls whether iteration messages remain visible after the agent finishes. Waiting approvals and user-input steps still stay visible.
+- `resources` are read before each run and injected into the prompt as extra working context.
+
+## Providers
+
+### Built-in provider
+
+The built-in provider currently shipped in this package is GitHub Copilot:
+
+```ts
+providers: [
+  {
+    type: "built-in",
+    id: "gitHubCopilot",
+    config: {
+      rememberToken: true,
+    },
+  },
+];
+```
+
+The provider defaults to same-origin proxy paths:
+
+- `/github/login/device/code`
+- `/github/login/oauth/access_token`
+- `/github-api/copilot_internal/v2/token`
+- `/github-copilot-api/chat/completions`
+- `/github-copilot-api/models`
+- `/github-copilot-individual-api/models`
+
+The included Vite demo wires these routes in [`vite.config.ts`](./vite.config.ts). If your host app uses different routes, override them in the provider config.
+
+### Custom providers
+
+You can pass any custom provider that implements `AIProvider`. Extending `BaseProvider` is the easiest path:
+
+```ts
+import { BaseProvider } from "aura-ai-chat";
+
+class DemoProvider extends BaseProvider {
+  readonly id = "demo-provider";
+  readonly type = "custom";
+  readonly name = "Demo Provider";
+
+  async getModels() {
+    return [{ id: "demo-model", name: "Demo Model" }];
+  }
+
+  async chat() {
+    return {
+      content: "Hello from a custom provider.",
+      toolCalls: [],
+    };
+  }
+
+  async *streamChat() {
+    yield { contentDelta: "Hello " };
+    yield { contentDelta: "from a custom provider." };
+    yield { done: true };
+  }
+}
+
+providers: [
+  {
+    type: "custom",
+    id: "demo-provider",
+    config: new DemoProvider(),
+  },
+];
+```
+
+## Skills, tools, and approvals
+
+Skills are named bundles of instructions plus tool ids:
+
+```ts
+const skills = [
+  {
+    name: "Risk Manager",
+    description: "Checks limits before execution.",
+    instructions: "Use exposure tools before recommending a trade.",
+    tools: ["get_portfolio_exposure", "check_risk_limits"],
+  },
+];
+```
+
+Tools use `AuraTool`:
+
+```ts
+const closeTradeTool = {
+  name: "close_trade_position",
+  title: "Close Trade Position",
+  description: "Close one open position after approval.",
+  risk: AuraToolRisk.Destructive,
+  inputSchema: {
+    type: "object",
+    properties: {
+      symbol: { type: "string" },
+    },
+    required: ["symbol"],
+  },
+  preview: {
+    async buildContent(args) {
+      return [
+        {
+          type: "text",
+          text: `Close ${String(args.symbol)} after user approval.`,
+        },
+      ];
+    },
+  },
+  async execute(args) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Closed ${String(args.symbol)}.`,
+        },
+      ],
+    };
+  },
+};
+```
+
+Risk handling:
+
+- No `risk` or `risk: "safe"` executes immediately.
+- `risk: "moderate"` waits for explicit user approval.
+- `risk: "destructive"` also waits for explicit user approval and is marked destructive for tool annotations.
+
+The agent loop also includes a built-in `aura_ask_user` tool. When the model needs blocking clarification, the widget renders an inline reply field and resumes once the user answers.
+
+### Tool result content
+
+Aura tools can return mixed content:
+
+- `text`
+- `json`
+- `image`
+- `audio`
+- `resource`
+- `custom-element`
+
+`custom-element` is useful for rich previews in approval cards or tool result rendering.
+
+## Agent timeline and events
+
+Each agent run can emit iteration metadata with step types such as:
+
+- `thinking`
+- `skill-select`
+- `tool-call`
+- `ask-user`
+- `approval`
+
+Widget events include:
+
+- `message-sent`
+- `message-received`
+- `tool-called`
+- `tool-start`
+- `tool-success`
+- `tool-error`
+- `skill-selected`
+- `agent-loop-started`
+- `agent-loop-completed`
+- `agent-step-started`
+- `agent-step-completed`
+- `debug`
+- `error`
+
+Use `onAuraEvent` to observe them, or connect them to the event monitor component:
+
+```html
+<aura-chat id="chat"></aura-chat>
+<aura-event-monitor id="monitor"></aura-event-monitor>
+
+<script type="module">
+  const chat = document.getElementById("chat");
+  const monitor = document.getElementById("monitor");
+
+  chat.config = {
+    /* ... */
+    onAuraEvent(event) {
+      monitor.pushEvent(event);
+    },
   };
 </script>
 ```
 
----
+## WebMCP
 
-## AuraConfig Reference
+Set `agent.enableWebMcp = true` to enable WebMCP bridging.
 
-```typescript
-interface AuraConfig {
-  identity: IdentityConfig;     // App, tenant, user identification
-  header: HeaderConfig;         // Title + optional icon
-  welcome: WelcomeConfig;       // Welcome screen content + suggested prompts
-  providers: AIProviderConfig[];// Built-in or custom AI providers
-  behavior: AIBehaviorConfig;   // System prompt, skills, tools, parameters
-  conversation: ConversationHistoryProvider; // CRUD for conversations
-  onEvent?: (event: AuraEvent) => void;     // Event callback
-  ui: UIConfig;                 // Theme, custom components, settings control
+Current behavior:
+
+- Aura exports registered tools to `navigator.mcp` as `aura:<toolName>`.
+- Aura imports compatible page-level MCP tools and makes them available to the agent.
+- Exported tool annotations are derived from `title` and `risk`.
+
+If `navigator.mcp` is missing, the bridge quietly does nothing.
+
+## Themes and host control
+
+Built-in themes:
+
+- `light`
+- `dark`
+- `professional-light`
+- `auto`
+
+The package also exports the theme modules and types from [`src/index.ts`](./src/index.ts).
+
+For settings control, use `settingsModalConfig`:
+
+```ts
+settingsModalConfig: {
+  readonly: true,
+  editableFields: ["theme", "copilotRemember"],
 }
 ```
-
-### IdentityConfig
-
-| Property   | Type     | Description                 |
-|------------|----------|-----------------------------|
-| `appId`    | `string` | Application identifier      |
-| `ownerId`  | `string` | Organisation / owner ID     |
-| `tenantId` | `string` | Tenant identifier           |
-| `userId`   | `string` | Current user identifier     |
-| `aiName`   | `string` | Display name for the AI     |
-
-### AIBehaviorConfig
-
-| Property               | Type                        | Description                            |
-|------------------------|-----------------------------|----------------------------------------|
-| `systemPrompt`         | `string?`                   | Custom system prompt appended to master|
-| `securityInstructions` | `string?`                   | Injected as security constraints       |
-| `dynamicContext`       | `() => Promise<string>?`    | Fetched at runtime before each request |
-| `skills`               | `Skill[]?`                  | Registered skills                      |
-| `tools`                | `Tool[]?`                   | Global tools                           |
-| `temperature`          | `number?`                   | LLM temperature (0–2)                  |
-| `maxTokens`            | `number?`                   | Max output tokens                      |
-| `topP`                 | `number?`                   | Nucleus sampling                       |
-
-### UIConfig
-
-| Property           | Type                        | Description                           |
-|--------------------|-----------------------------|---------------------------------------|
-| `theme`            | `'light' \| 'dark' \| 'auto'` | Default: `'auto'`                  |
-| `customComponents` | `CustomMessageComponent[]?` | Register custom renderers             |
-| `settings`         | `SettingsControl?`          | Visibility / readonly rules           |
-
-### ConversationHistoryProvider
-
-```typescript
-interface ConversationHistoryProvider {
-  createConversation(): Promise<ConversationMeta>;
-  listConversations(): Promise<ConversationMeta[]>;
-  getMessages(conversationId: string): Promise<Message[]>;
-  saveMessage(conversationId: string, message: Message): Promise<void>;
-  deleteConversation?(conversationId: string): Promise<void>;
-  updateConversation?(conversationId: string, patch: Partial<ConversationMeta>): Promise<void>;
-}
-```
-
----
-
-## AI Provider Guide
-
-### Built-in Providers
-
-Three providers ship out of the box:
-
-```typescript
-providers: [
-  { type: 'built-in', providerId: 'openai',    apiKey: 'sk-...' },
-  { type: 'built-in', providerId: 'anthropic',  apiKey: 'sk-ant-...' },
-  { type: 'built-in', providerId: 'ollama',     baseUrl: 'http://localhost:11434' },
-]
-```
-
-### Implementing a Custom Provider
-
-Implement the `AIProvider` interface and pass it as a `custom` provider:
-
-```typescript
-import type { AIProvider, AIModel, AIRequest, AIStreamChunk } from 'aura-ai-chat';
-
-class MyProvider implements AIProvider {
-  readonly id = 'my-provider';
-  readonly name = 'My Provider';
-
-  async isAuthenticated() { return true; }
-  async authenticate() {}
-  onAuthComplete() {}
-  logout() {}
-
-  async getAvailableModels(): Promise<AIModel[]> {
-    return [{ id: 'my-model', name: 'My Model' }];
-  }
-
-  async sendMessage(request: AIRequest): Promise<AsyncIterable<AIStreamChunk>> {
-    // Return an async iterable yielding { delta, done } chunks
-    return (async function* () {
-      yield { delta: 'Hello from custom provider!', done: false };
-      yield { delta: '', done: true };
-    })();
-  }
-
-  cancelRequest() { /* abort logic */ }
-}
-
-// Usage
-providers: [
-  { type: 'custom', instance: new MyProvider(), displayName: 'My AI' },
-]
-```
-
----
-
-## Skills Guide
-
-Skills are bundles of a system prompt + tools that can be enabled/disabled as a unit:
-
-```typescript
-const reportSkill: Skill = {
-  name: 'generate_report',
-  title: 'Generate Report',
-  description: 'Creates sales and analytics reports.',
-  category: 'Data',
-  systemPrompt: 'You are a report generation assistant.',
-  enabled: true,
-  tools: ['fetch_data'], // Reference tools by name
-};
-
-const fetchDataTool: Tool = {
-  name: 'fetch_data',
-  title: 'Fetch Data',
-  description: 'Fetches report data from the warehouse.',
-  inputSchema: { /* ... */ },
-  execute: async (input) => ({ /* ... */ }),
-};
-
-// Register both via config
-behavior: { 
-  skills: [reportSkill],
-  tools: [fetchDataTool] 
-}
-```
-
-When a skill is **disabled**, its tools are also disabled. Toggling is available in the Settings modal.
-
----
-
-## Tools Guide
-
-Tools follow the [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) schema:
-
-```typescript
-const tool: Tool = {
-  name: 'get_weather',
-  title: 'Get Weather',
-  description: 'Returns current weather for a city.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      city: { type: 'string', description: 'City name' },
-    },
-    required: ['city'],
-  },
-  execute: async (input) => ({
-    content: [{ type: 'text', text: `Weather in ${input.city}: 22°C` }],
-  }),
-};
-```
-
-### Tool Result Format (MCP-aligned)
-
-```typescript
-interface ToolResult {
-  content: Array<TextContent | ImageContent | EmbeddedResource>;
-  isError?: boolean;
-}
-```
-
-### MCP Server Adapter
-
-To bridge an MCP server's tools into Aura, map each server tool to the `Tool` interface and route `execute()` calls to the server's `tools/call` endpoint.
-
-### Tool Locking
-
-When a tool is used by an **enabled skill**, it becomes **locked** — it cannot be independently disabled in the Settings UI until the parent skill is disabled first. This is indicated by a 🔒 icon.
-
----
-
-## Custom Message Components
-
-Register custom Web Components to render specialised message content:
-
-```typescript
-ui: {
-  customComponents: [
-    {
-      tag: 'my-chart',
-      schema: { type: 'object', properties: { data: { type: 'array' } } },
-      description: 'Renders a chart from data',
-    },
-  ],
-}
-```
-
-The AI can then emit `<my-chart>` tags in its responses, and Aura will render them using your registered component.
-
----
-
-## Theming
-
-Aura exposes CSS custom properties for full visual control. Override them on the `<aura-chat>` element or a parent container:
-
-```css
-aura-chat {
-  /* ── Colours ─────────────────────────── */
-  --aura-color-bg:            #0f1117;
-  --aura-color-surface:       #171923;
-  --aura-color-border:        #2a2d3a;
-  --aura-color-text:          #e2e4ed;
-  --aura-color-text-muted:    #6b7280;
-  --aura-color-primary:       #7c6af7;
-  --aura-color-primary-fg:    #ffffff;
-  --aura-color-user-bubble:   rgba(124, 106, 247, 0.12);
-  --aura-color-ai-bubble:     rgba(255, 255, 255, 0.03);
-  --aura-color-error:         #ef4444;
-
-  /* ── Typography ──────────────────────── */
-  --aura-font-family:         'DM Sans', sans-serif;
-  --aura-font-size-base:      14px;
-
-  /* ── Shape ───────────────────────────── */
-  --aura-radius-widget:       12px;
-  --aura-shadow:              0 8px 32px rgba(0, 0, 0, 0.4);
-}
-```
-
-### Built-in Themes
-
-| Theme    | Behaviour                                |
-|----------|------------------------------------------|
-| `dark`   | Dark palette (default)                   |
-| `light`  | Light palette with white surfaces        |
-| `auto`   | Follows `prefers-color-scheme` media query |
-
-Set via `ui.theme` in config or toggled at runtime.
-
-
-
----
 
 ## Demo
 
-The project includes a **three-panel vanilla demo**:
+The package demo now showcases:
 
-```
-index.html   ← Three-panel layout
-main.js      ← In-memory backend + config sidebar
-```
-### Running the Demo
+- one-skill, multi-tool orchestration
+- multi-skill handoff across research, risk, and execution
+- human-in-the-loop close-trade approval with a custom preview element
+- fallback tool usage when no specialist skill is selected
+- live event monitoring
+
+Run it locally:
 
 ```bash
+cd package
 npm install
-npm run build     # Production build → dist/*
-npm run dev       # Vite dev server with HMR
-# Open http://localhost:5178/
+npm run start
 ```
 
-### Test with Host Apps
+Open `http://localhost:5178/`.
+
+For a production bundle:
 
 ```bash
 npm run build
-# Verify .d.ts files are generated
-ls dist/types
-# Re-link
-npm link
-
-# In Angular Host App project
-npm link aura-ai-chat
 ```
 
-| Panel         | Description                                    |
-|---------------|------------------------------------------------|
-| **Left**      | Settings sidebar — live-edit all config fields  |
-| **Center**    | The `<aura-chat>` widget                        |
-| **Right**     | Event log — real-time feed of widget events     |
+## Exports
 
-## AI ↔ Host UI Interaction
+Main exports include:
 
-Enable the AI to take actions in the host application — safely, with user oversight.
+- `AuraChat`
+- `AuraEventMonitorElement`
+- `AuraAgentIterationElement`
+- `AuraAgentStepElement`
+- `ActionPreviewElement`
+- `ConfirmationBubbleElement`
+- `SkillRegistry`
+- `ToolDispatcher`
+- `ProviderManager`
+- `CommunicationManager`
+- `WebMcpBridge`
+- `BaseProvider`
+- `GitHubCopilotProvider`
 
-### Overview
-
-Tools now support an optional **risk** field that determines how the widget handles execution:
-
-| Risk | Behaviour |
-|---|---|
-| *(absent)* | **Query tool** — silent, AI-only. Result returned to the AI but nothing shown to the user. |
-| `'safe'` | Execute immediately. Brief toast confirming success. |
-| `'moderate'` | Show a **ConfirmationBubble** with preview. User must click **Approve**. |
-| `'destructive'` | Same as moderate + user must type `confirm`. |
-
-### Registering Action Tools
-
-```ts
-const config: AuraConfig = {
-  behavior: {
-    tools: [
-      // Query tool (no risk)
-      {
-        name: 'search_items',
-        description: 'Search product catalog by keyword',
-        inputSchema: {
-          type: 'object',
-          properties: { query: { type: 'string' } },
-          required: ['query'],
-        },
-        execute: async ({ query }) => ({ content: [{ type: 'text', text: JSON.stringify(results) }] }),
-      },
-      // Moderate action tool
-      {
-        name: 'update_price',
-        description: 'Change the price of a product',
-        label: 'Update Price',
-        risk: 'moderate',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            productId: { type: 'string' },
-            newPrice:  { type: 'number' },
-          },
-          required: ['productId', 'newPrice'],
-        },
-        preview: {
-          element: 'price-change-preview',
-          buildProps: async ({ productId, newPrice }) => {
-            const product = await fetchProduct(productId);
-            return { product, oldPrice: product.price, newPrice };
-          },
-        },
-        execute: async ({ productId, newPrice }) => {
-          await api.updatePrice(productId, newPrice);
-          return { content: [{ type: 'text', text: `Price updated to $${newPrice}` }] };
-        },
-      },
-    ],
-  },
-  // ... rest of config
-};
-```
-
-### Preview Custom Elements
-
-The `preview.element` must be a registered Custom Element. Register it before the widget loads:
-
-```ts
-class PriceChangePreview extends HTMLElement {
-  set product(val) { /* ... */ }
-  set oldPrice(val) { /* ... */ }
-  set newPrice(val) { /* ... */ }
-}
-customElements.define('price-change-preview', PriceChangePreview);
-```
-
-> Properties are set as `element[key] = value`, not `setAttribute`. This supports objects & arrays.
-
-### AI System Prompt Contract
-
-The widget automatically generates a system prompt section from registered action tools. The AI is instructed to:
-
-- Call **query** and **safe** tools directly
-- For **moderate / destructive** tools: respond only with an `action_proposal` JSON block:
-
-```json
-{
-  "type": "action_proposal",
-  "name": "update_price",
-  "arguments": { "productId": "SKU-42", "newPrice": 29.99 },
-  "summary": "Update the price of Widget X from $39.99 to $29.99"
-}
-```
-
-### Dynamic Context
-
-Use `dynamicContext` in your behavior config to feed real-time app state into the AI:
-
-```ts
-behavior: {
-  dynamicContext: async () => `Current user: ${user.name}\nSelected items: ${items.length}`,
-},
-```
-
-### Events
-
-| Event | Payload | When |
-|---|---|---|
-| `action:proposed` | `{ toolName, arguments, summary }` | AI proposed a moderate/destructive action |
-| `action:preview-rendered` | `{ toolName, element }` | Preview element mounted |
-| `action:approved` | `{ toolName, arguments }` | User clicked Approve |
-| `action:cancelled` | `{ toolName, arguments }` | User clicked Cancel |
-| `action:succeeded` | `{ toolName, arguments, result }` | Action executed successfully |
-| `action:failed` | `{ toolName, arguments, error }` | Action execution failed |
-| `action:undone` | `{ toolName }` | Undo completed |
-| `tool:failed` | `{ toolName, error }` | Query/safe tool execution failed |
-
-### Programmatic Execution
-
-```ts
-const widget = document.querySelector('aura-chat');
-const result = await widget.executeAction('update_price', { productId: 'SKU-42', newPrice: 29.99 });
-```
-
----
-
-## Architecture
-
-### System Prompt Assembly Order
-
-The system prompt is assembled in strict order by the `PromptBuilder`:
-
-```
-1. Master system prompt   (hardcoded safety + behaviour baseline)
-2. App system prompt      (config.behavior.systemPrompt)
-3. Security instructions  (config.behavior.securityInstructions)
-4. Dynamic context        (config.behavior.dynamicContext())
-5. Skills index           (summaries of enabled skills)
-6. Tools index            (summaries of enabled tools)
-6.5 Action tools block    (query + action catalogs + AI protocol)
-7. Meta-instructions      (response format rules)
-```
-
-### Skill & Tool Resolution Flow
-
-```mermaid
-graph TD
-    A[User sends message] --> B[PromptBuilder.build]
-    B --> C[Assemble system prompt]
-    C --> D{Skills registered?}
-    D -->|Yes| E[Inject skill summaries + tool schemas]
-    D -->|No| F[Skip]
-    E --> G{Global tools?}
-    F --> G
-    G -->|Yes| H[Inject tool summaries]
-    G -->|No| I[Skip]
-    H --> J[Send to AI provider]
-    I --> J
-    J --> K[Stream response]
-    K --> L{Tool call in response?}
-    L -->|Yes| M[toolRegistry.execute]
-    M --> N[Inject result → next turn]
-    L -->|No| O[Display to user]
-```
-
-### Component Tree
-
-```
-<aura-chat>                    ← Root orchestrator
-  ├── <aura-header>            ← Title bar + action buttons
-  ├── <aura-messages>          ← Message list / welcome state
-  ├── <aura-confirmation-bubble> ← Tool approval gate (conditional)
-  ├── <aura-input>             ← Textarea + provider/model selectors
-  ├── <aura-settings>          ← Modal overlay (7 collapsible groups)
-  └── <aura-history>           ← Side drawer (conversation list)
-```
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Commit with conventional commits (`git commit -m "feat: add X"`)
-4. Open a pull request
-
-
----
+See [`src/index.ts`](./src/index.ts) for the current export surface.
 
 ## License
 
