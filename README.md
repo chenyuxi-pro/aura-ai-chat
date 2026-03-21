@@ -16,7 +16,7 @@ It includes:
 
 - the `<aura-chat>` widget
 - the `aura-event-monitor` component
-- agentic loop support with skills, tools, approvals, and ask-user steps
+- agentic loop support with skills, tools, and human-in-the-loop steps
 - WebMCP bridging
 - a Vite demo app
 

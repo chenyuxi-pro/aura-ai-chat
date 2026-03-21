@@ -4,7 +4,7 @@ Aura AI Chat is a framework-agnostic AI chat widget built as a Web Component lib
 
 ## Latest changes
 
-- The widget now runs an agentic loop with iteration tracking, skill selection, tool calls, ask-user steps, and step-by-step timeline rendering.
+- The widget now runs an agentic loop with iteration tracking, skill selection, tool calls, human-in-the-loop steps, and step-by-step timeline rendering.
 - Human-in-the-loop flows support `safe`, `moderate`, and `destructive` tool risk levels, preview content, timeout handling, and inline approval/rejection UI.
 - A new `aura-event-monitor` component can display live widget events, including agent loop and tool telemetry.
 - WebMCP support can export Aura tools to the page and import compatible tools from `navigator.mcp`.
