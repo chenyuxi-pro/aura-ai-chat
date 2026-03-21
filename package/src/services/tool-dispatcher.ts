@@ -7,7 +7,7 @@ import type {
   TextContent,
   ToolCallLogEntry,
 } from "../types/index.js";
-import type { SkillRegistry } from "../skills/skill-registry.js";
+import type { SkillRegistry } from "./skill-registry.js";
 
 export function contentToModelText(
   content: ToolResultContent | ToolResultContent[],

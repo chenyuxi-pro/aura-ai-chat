@@ -1,6 +1,7 @@
 :host {
   display: block;
   font-family: var(--aura-font-family, system-ui, -apple-system, sans-serif);
+  padding: 0 6px;
 }
 
 .timeline-item {
@@ -17,7 +18,7 @@
   flex-direction: column;
   align-items: center;
   position: relative;
-  padding-top: 4px;
+  padding-top: 5px;
 }
 
 .timeline-rail::before {
@@ -47,6 +48,7 @@
   z-index: 1;
   color: var(--aura-text-tertiary, #d1d5db);
   filter: drop-shadow(0 0 2px var(--aura-bg-surface, #fff));
+  mzt
 }
 
 .timeline-icon--running {
@@ -114,8 +116,9 @@
 }
 
 .step__summary {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -144,7 +147,8 @@
 }
 
 .step__spacer {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .step__detail {

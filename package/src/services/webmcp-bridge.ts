@@ -1,4 +1,4 @@
-import type { SkillRegistry } from "../skills/skill-registry.js";
+import type { SkillRegistry } from "./skill-registry.js";
 import type {
   AppMetadata,
   AuraTool,

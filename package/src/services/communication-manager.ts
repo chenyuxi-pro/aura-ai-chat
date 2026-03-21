@@ -16,12 +16,12 @@ import type {
   AuraResource,
 } from "../types/index.js";
 import { AuraEventType, needsConfirmation } from "../types/index.js";
-import type { SkillRegistry } from "../skills/skill-registry.js";
+import type { SkillRegistry } from "./skill-registry.js";
 import type { ToolDispatcher } from "./tool-dispatcher.js";
 import { contentToModelText } from "./tool-dispatcher.js";
 import type { ProviderManager } from "./provider-manager.js";
 import type { HistoryManager } from "./history-manager.js";
-import type { EventBus } from "../logging/event-bus.js";
+import type { EventBus } from "./event-bus.js";
 import {
   buildSystemPrompt,
   type SystemPromptArgs,
@@ -31,7 +31,7 @@ import {
   SKILL_SELECT_TOOL_NAME,
   SKILL_SWITCH_TOOL_NAME,
   ASK_USER_TOOL_NAME,
-} from "../prompt/prompt-builder.js";
+} from "./prompt-builder.js";
 import { trimToTokenBudget } from "./tokenBudget.js";
 
 export interface OrchestratorCallbacks {

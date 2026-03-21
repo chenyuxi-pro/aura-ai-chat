@@ -74,7 +74,7 @@ export { AuraAgentIterationElement } from "./components/aura-agent-iteration/aur
 export { AuraAgentStepElement } from "./components/aura-agent-step/aura-agent-step.js";
 export { AuraEventMonitorElement } from "./components/aura-event-monitor/aura-event-monitor.js";
 
-export { SkillRegistry } from "./skills/skill-registry.js";
+export { SkillRegistry } from "./services/skill-registry.js";
 export {
   ToolDispatcher,
   contentToModelText,
@@ -98,7 +98,7 @@ export {
   SKILL_SELECT_TOOL_NAME,
   ASK_USER_TOOL_NAME,
   SKILL_SWITCH_TOOL_NAME,
-} from "./prompt/prompt-builder.js";
+} from "./services/prompt-builder.js";
 
 export {
   estimateTokens,
@@ -119,7 +119,7 @@ export type {
   GitHubCopilotProviderConfig,
 } from "./providers/index.js";
 
-export { EventBus, AUDIT_EVENT_NAME } from "./logging/event-bus.js";
+export { EventBus, AUDIT_EVENT_NAME } from "./services/event-bus.js";
 
 export type { AuraTheme } from "./themes/index.js";
 export {

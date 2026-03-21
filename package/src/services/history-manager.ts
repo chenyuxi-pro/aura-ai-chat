@@ -5,7 +5,7 @@ import type {
   IConversationManager,
 } from "../types/index.js";
 import { AuraEventType } from "../types/index.js";
-import type { EventBus } from "../logging/event-bus.js";
+import type { EventBus } from "./event-bus.js";
 
 function makeConversation(): Conversation {
   const now = Date.now();

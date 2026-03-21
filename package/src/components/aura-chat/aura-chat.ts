@@ -23,7 +23,7 @@ import {
   DeviceFlowInfo,
   GitHubCopilotProvider,
 } from "../../providers/github-copilot-provider.js";
-import { EventBus } from "../../logging/event-bus.js";
+import { EventBus } from "../../services/event-bus.js";
 import {
   lightTheme,
   darkTheme,
@@ -44,7 +44,7 @@ import type { AuraInput } from "../aura-input/aura-input.js";
 import { HistoryManager } from "../../services/history-manager.js";
 import { ensureMaterialSymbolsFont } from "../../utils/fonts.js";
 import { ProviderManager } from "../../services/provider-manager.js";
-import { SkillRegistry } from "../../skills/skill-registry.js";
+import { SkillRegistry } from "../../services/skill-registry.js";
 import { ToolDispatcher } from "../../services/tool-dispatcher.js";
 import {
   CommunicationManager,
