@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import type { AuraConfig, SuggestedPrompt } from 'aura-ai-chat';
+import type { AuraConfig, AuraEvent, AuraResource, SuggestedPrompt } from 'aura-ai-chat';
 import { ConversationService } from '../core/services/conversation.service';
 import { DashboardService } from '../core/services/dashboard.service';
 import { ThemeService } from '../core/services/theme.service';
@@ -23,73 +23,102 @@ export class WidgetConfigBuilder {
   private readonly mockProvider = inject(MockAiProvider);
 
   private readonly suggestedPrompts: SuggestedPrompt[] = [
-    { label: 'Build from scratch', prompt: 'Help me build a dashboard from scratch' },
-    { label: 'Weather multi-city', prompt: 'I want to track weather data for multiple cities' },
-    { label: 'Recommend next panel', prompt: 'What would you recommend adding to my current dashboard?' },
-    { label: 'List current panels', prompt: 'What panels are on my dashboard?' },
-    { label: 'Add Paris line chart', prompt: 'Add a line chart showing Paris temperature for the last 7 days' },
-    { label: 'Switch dark mode', prompt: 'Switch the app to dark mode' },
-    { label: 'Europe population table', prompt: 'Show me a table of European countries by population' },
-    { label: 'Update to Asia', prompt: 'Update the table to show Asian countries instead' },
-    { label: 'Delete bar chart', prompt: 'Delete the bar chart panel' },
-    { label: 'Analyze dashboard', prompt: "Analyze what's currently on my dashboard" },
+    { title: 'Build from scratch', promptText: 'Help me build a dashboard from scratch' },
+    { title: 'Weather multi-city', promptText: 'I want to track weather data for multiple cities' },
+    { title: 'Recommend next panel', promptText: 'What would you recommend adding to my current dashboard?' },
+    { title: 'List current panels', promptText: 'What panels are on my dashboard?' },
+    { title: 'Add Paris line chart', promptText: 'Add a line chart showing Paris temperature for the last 7 days' },
+    { title: 'Switch dark mode', promptText: 'Switch the app to dark mode' },
+    { title: 'Europe population table', promptText: 'Show me a table of European countries by population' },
+    { title: 'Update to Asia', promptText: 'Update the table to show Asian countries instead' },
+    { title: 'Delete bar chart', promptText: 'Delete the bar chart panel' },
+    { title: 'Analyze dashboard', promptText: "Analyze what's currently on my dashboard" },
   ];
 
   buildConfig(): AuraConfig {
-    const theme = this.themeService.resolvedTheme();
-
     return {
       identity: {
-        appId: 'angular-demo',
-        ownerId: 'host-examples',
-        tenantId: 'local-dev',
-        userId: 'demo-user',
+        appMetadata: {
+          appId: 'angular-demo',
+          teamId: 'host-examples',
+          tenantId: 'local-dev',
+          userId: 'demo-user',
+        },
         aiName: 'Dash',
       },
-      header: {
-        title: 'Dashboard Assistant',
-      },
-      welcome: {
-        title: "Hi, I'm Dash",
-        message: 'Ask me to analyze data or add panels.',
+      appearance: {
+        headerTitle: 'Dashboard Assistant',
+        welcomeMessageTitle: "Hi, I'm Dash",
+        welcomeMessage: 'Ask me to analyze data, create panels, or update the current layout.',
+        inputPlaceholder: 'Ask Dash to build or refine your dashboard...',
         suggestedPrompts: this.suggestedPrompts,
+        theme: this.getAuraTheme(),
       },
       providers: [
         {
-          type: 'built-in',
-          providerId: 'github-copilot',
-          displayName: 'GitHub Copilot',
+          type: 'custom',
+          id: this.mockProvider.id,
+          config: this.mockProvider,
         },
         {
-          type: 'custom',
-          instance: this.mockProvider,
-          displayName: 'Dash Mock',
-          icon: 'smart_toy',
+          type: 'built-in',
+          id: 'github-copilot',
+          config: {
+            rememberToken: true,
+          },
         },
       ],
-      behavior: {
-        systemPrompt: SYSTEM_PROMPT,
-        dynamicContext: async () => {
-          const snapshot = this.dashboardService.snapshotDashboard(
-            this.themeService.preference(),
-            this.themeService.resolvedTheme(),
-          );
-
-          return JSON.stringify(snapshot, null, 2);
-        },
+      agent: {
+        appSystemPrompt: SYSTEM_PROMPT,
+        resources: [this.createDashboardSnapshotResource()],
         skills: [dashboardBuilderSkill],
         tools: this.toolRegistry.getAll(),
-        temperature: 0.2,
-        maxTokens: 1200,
+        conversationManager: this.conversationService.getManager(),
+        enableStreaming: true,
+        maxContextTokens: 4096,
+        maxIterations: 8,
+        showThinkingProcess: true,
+        toolTimeout: 30000,
+        confirmationTimeoutMs: 65000,
+        enableWebMcp: false,
       },
-      conversation: this.conversationService.getCallbacks(),
-      ui: {
-        theme,
-      },
-      onEvent: (event) => {
+      onAuraEvent: (event: AuraEvent) => {
         if (event.type === 'error') {
           console.error('[aura-ai-chat]', event.payload);
         }
+      },
+    };
+  }
+
+  private getAuraTheme(): 'dark' | 'professional-light' | 'auto' {
+    const preference = this.themeService.preference();
+    if (preference === 'dark') {
+      return 'dark';
+    }
+
+    if (preference === 'system') {
+      return 'auto';
+    }
+
+    return 'professional-light';
+  }
+
+  private createDashboardSnapshotResource(): AuraResource {
+    return {
+      uri: 'local://angular-dashboard/snapshot',
+      name: 'dashboard-snapshot',
+      description: 'Current Angular host dashboard state, theme, and available sources.',
+      read: async () => {
+        const snapshot = this.dashboardService.snapshotDashboard(
+          this.themeService.preference(),
+          this.themeService.resolvedTheme(),
+        );
+
+        return {
+          uri: 'local://angular-dashboard/snapshot',
+          mimeType: 'application/json',
+          text: JSON.stringify(snapshot, null, 2),
+        };
       },
     };
   }

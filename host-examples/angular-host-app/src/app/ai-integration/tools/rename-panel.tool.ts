@@ -1,14 +1,13 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DashboardService } from '../../core/services/dashboard.service';
 import { asRecord, readString, textResult } from './tool-utils';
 
-export function createRenamePanelTool(dashboardService: DashboardService): Tool {
+export function createRenamePanelTool(dashboardService: DashboardService): AuraTool {
   return {
     name: 'dashboard.panel.rename',
     title: 'Rename Panel',
     description: 'Renames a panel by id.',
     risk: 'safe',
-    label: 'Rename panel',
     inputSchema: {
       type: 'object',
       properties: {

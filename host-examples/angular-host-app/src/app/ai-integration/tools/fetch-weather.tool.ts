@@ -1,8 +1,8 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DataService } from '../../core/services/data.service';
 import { asRecord, readNumber, readString, textResult } from './tool-utils';
 
-export function createFetchWeatherTool(dataService: DataService): Tool {
+export function createFetchWeatherTool(dataService: DataService): AuraTool {
   return {
     name: 'data.fetch_weather',
     title: 'Fetch Weather Data',

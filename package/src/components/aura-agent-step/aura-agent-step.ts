@@ -59,17 +59,7 @@ export class AuraAgentStepElement extends LitElement {
         <!-- Left rail: line + status icon -->
         <div class="timeline-rail">
           <md-icon class="timeline-icon timeline-icon--${s.status}">
-            ${s.status === "running"
-              ? "sync"
-              : s.status === "complete"
-                ? "check_circle"
-                : s.status === "error"
-                  ? "cancel"
-                  : s.status === "rejected"
-                    ? "block"
-                    : s.status === "waiting"
-                      ? "schedule"
-                      : "radio_button_unchecked"}
+            ${this.getTimelineIcon(s)}
           </md-icon>
         </div>
 
@@ -117,6 +107,20 @@ export class AuraAgentStepElement extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private getTimelineIcon(s: AgentStep): unknown {
+    return s.status === "running"
+      ? "sync"
+      : s.status === "complete"
+        ? "check_circle"
+        : s.status === "error"
+          ? "cancel"
+          : s.status === "rejected"
+            ? "block"
+            : s.status === "waiting"
+              ? "schedule"
+              : "radio_button_unchecked";
   }
 
   private renderDetail(): TemplateResult | typeof nothing {

@@ -1,13 +1,12 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DashboardService } from '../../core/services/dashboard.service';
-import { normalizePanelConfigInput, textResult } from './tool-utils';
+import { customElementPreview, normalizePanelConfigInput, textResult } from './tool-utils';
 
-export function createCreatePanelTool(dashboardService: DashboardService): Tool {
+export function createCreatePanelTool(dashboardService: DashboardService): AuraTool {
   return {
     name: 'dashboard.panel.create',
     title: 'Create Panel',
     description: 'Creates a new dashboard panel.',
-    label: 'Create panel',
     risk: 'moderate',
     inputSchema: {
       type: 'object',
@@ -28,14 +27,13 @@ export function createCreatePanelTool(dashboardService: DashboardService): Tool 
       required: ['panelConfig'],
     },
     preview: {
-      element: 'dashboard-panel-preview',
-      buildProps: async (args) => {
+      buildContent: async (args) => {
         const panelConfig = normalizePanelConfigInput(args['panelConfig']);
         const dataPreview = await dashboardService.previewPanelData(panelConfig);
-        return {
+        return customElementPreview('dashboard-panel-preview', {
           panelConfig,
           dataPreview,
-        };
+        });
       },
     },
     execute: async (input) => {

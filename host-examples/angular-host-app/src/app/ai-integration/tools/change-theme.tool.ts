@@ -1,15 +1,14 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { ThemeService } from '../../core/services/theme.service';
 import type { ThemePreference } from '../../core/models/panel.model';
 import { asRecord, readString, textResult } from './tool-utils';
 
-export function createChangeThemeTool(themeService: ThemeService): Tool {
+export function createChangeThemeTool(themeService: ThemeService): AuraTool {
   return {
     name: 'app.theme.change',
     title: 'Change App Theme',
     description: 'Switches app theme between light, dark, or system.',
     risk: 'safe',
-    label: 'Change theme',
     inputSchema: {
       type: 'object',
       properties: {

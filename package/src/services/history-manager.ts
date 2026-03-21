@@ -37,8 +37,7 @@ export class HistoryManager {
   getConversation(): Conversation {
     if (!this.conversation) {
       const conv = makeConversation();
-      this.conversation = conv;
-      this.upsertConversation(conv);
+      this.setActiveConversation(conv, { emitStarted: true });
     }
     return this.conversation;
   }
@@ -49,19 +48,18 @@ export class HistoryManager {
 
   async newConversation(): Promise<Conversation> {
     const local = makeConversation();
+    const previousConversation = this.conversation;
+    let nextConversation: Conversation;
 
     if (this.conversationManager?.createConversation) {
-      this.conversation = await this.conversationManager.createConversation(local);
+      nextConversation = await this.conversationManager.createConversation(local);
     } else {
-      this.conversation = local;
+      nextConversation = local;
     }
 
-    this.upsertConversation(this.conversation);
-    this.eventBus?.emit(AuraEventType.ConversationStarted, {
-      conversationId: this.conversation.id,
-      conversation: this.conversation,
-    });
-    return this.conversation;
+    this.emitConversationEnded(previousConversation, "new-conversation");
+    this.setActiveConversation(nextConversation, { emitStarted: true });
+    return nextConversation;
   }
 
   async createConversation(): Promise<Conversation> {
@@ -161,6 +159,7 @@ export class HistoryManager {
 
     this.history = this.history.filter((c) => c.id !== conversationId);
     if (this.conversation?.id === conversationId) {
+      this.emitConversationEnded(this.conversation, "deleted");
       this.conversation = null;
     }
 
@@ -171,9 +170,37 @@ export class HistoryManager {
     if (this.conversationManager?.clearHistory) {
       await this.conversationManager.clearHistory();
     }
+    this.emitConversationEnded(this.conversation, "history-cleared");
     this.history = [];
     this.conversation = null;
     this.eventBus?.emit(AuraEventType.HistoryCleared, {});
+  }
+
+  private setActiveConversation(
+    conversation: Conversation,
+    options: { emitStarted?: boolean } = {},
+  ): void {
+    this.conversation = conversation;
+    this.upsertConversation(conversation);
+    if (!options.emitStarted) return;
+
+    this.eventBus?.emit(AuraEventType.ConversationStarted, {
+      conversationId: conversation.id,
+      conversation,
+    });
+  }
+
+  private emitConversationEnded(
+    conversation: Conversation | null,
+    reason: "new-conversation" | "deleted" | "history-cleared",
+  ): void {
+    if (!conversation) return;
+
+    this.eventBus?.emit(AuraEventType.ConversationEnded, {
+      conversationId: conversation.id,
+      conversation,
+      reason,
+    });
   }
 
   private upsertConversation(conversation: Conversation): void {

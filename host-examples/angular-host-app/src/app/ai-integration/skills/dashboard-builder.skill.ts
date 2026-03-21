@@ -2,7 +2,6 @@ import type { Skill } from 'aura-ai-chat';
 
 export const dashboardBuilderSkill: Skill = {
   name: 'dashboard-builder',
-  title: 'Dashboard Builder',
   description:
     'Guides the AI to help users build and manage their dashboard through a structured conversational flow.',
   tools: [
@@ -16,7 +15,7 @@ export const dashboardBuilderSkill: Skill = {
     'dashboard.panel.rename',
     'app.theme.change',
   ],
-  systemPrompt: `
+  instructions: `
 # Dashboard Builder Skill
 
 You are a dashboard building assistant. When a user asks to build, create,

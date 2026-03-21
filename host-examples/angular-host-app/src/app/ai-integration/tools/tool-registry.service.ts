@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DataService } from '../../core/services/data.service';
 import { DashboardService } from '../../core/services/dashboard.service';
 import { ThemeService } from '../../core/services/theme.service';
@@ -19,7 +19,7 @@ export class ToolRegistryService {
   private readonly dataService = inject(DataService);
   private readonly themeService = inject(ThemeService);
 
-  private readonly tools: Tool[] = [
+  private readonly tools: AuraTool[] = [
     createGetPanelListTool(this.dashboardService),
     createGetSourceCatalogTool(this.dashboardService),
     createFetchWeatherTool(this.dataService),
@@ -31,7 +31,7 @@ export class ToolRegistryService {
     createDeletePanelTool(this.dashboardService),
   ];
 
-  getAll(): Tool[] {
+  getAll(): AuraTool[] {
     return this.tools;
   }
 }

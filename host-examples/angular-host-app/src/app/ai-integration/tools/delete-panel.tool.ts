@@ -1,13 +1,12 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DashboardService } from '../../core/services/dashboard.service';
-import { readString, textResult } from './tool-utils';
+import { customElementPreview, readString, textResult } from './tool-utils';
 
-export function createDeletePanelTool(dashboardService: DashboardService): Tool {
+export function createDeletePanelTool(dashboardService: DashboardService): AuraTool {
   return {
     name: 'dashboard.panel.delete',
     title: 'Delete Panel',
     description: 'Deletes a panel by id.',
-    label: 'Delete panel',
     risk: 'destructive',
     inputSchema: {
       type: 'object',
@@ -17,16 +16,13 @@ export function createDeletePanelTool(dashboardService: DashboardService): Tool 
       required: ['panelId'],
     },
     preview: {
-      element: 'panel-delete-preview',
-      buildProps: async (args) => {
+      buildContent: async (args) => {
         const panelId = readString(args['panelId']);
         const panel = dashboardService.getPanelById(panelId);
 
-        if (!panel) {
-          throw new Error(`Panel ${panelId} was not found.`);
-        }
-
-        return { panel };
+        return customElementPreview('panel-delete-preview', {
+          panel: panel ?? null,
+        });
       },
     },
     execute: async (input) => {

@@ -413,12 +413,6 @@ export enum AuraEventType {
   AgentStepCompleted = "agent-step-completed",
   Debug = "debug",
   Error = "error",
-  MESSAGE_SENT = "message-sent",
-  MESSAGE_RECEIVED = "message-received",
-  CONVERSATION_STARTED = "conversation-started",
-  CONVERSATION_DELETED = "conversation-deleted",
-  HISTORY_CLEARED = "history-cleared",
-  ERROR = "error",
 }
 
 export interface AuraEvent {

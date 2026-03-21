@@ -374,6 +374,10 @@ Each agent run can emit iteration metadata with step types such as:
 
 Widget events include:
 
+- `conversation-started`
+- `conversation-ended`
+- `conversation-deleted`
+- `history-cleared`
 - `message-sent`
 - `message-received`
 - `tool-called`

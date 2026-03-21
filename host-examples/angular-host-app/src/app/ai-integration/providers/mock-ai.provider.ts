@@ -1,5 +1,15 @@
 import { Injectable } from '@angular/core';
-import type { AIModel, AIProvider, AIRequest, AIStreamChunk, Message } from 'aura-ai-chat';
+import { BaseProvider } from 'aura-ai-chat';
+import type {
+  ModelInfo,
+  ProviderMessage,
+  ProviderOptions,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderResponseChunk,
+  ToolCallRequest,
+  ToolDefinition,
+} from 'aura-ai-chat';
 import type { DataSourceId, PanelConfig, PanelType } from '../../core/models/panel.model';
 import { readString } from '../tools/tool-utils';
 
@@ -18,59 +28,117 @@ interface PanelSummary {
   dataSource: DataSourceId;
 }
 
+interface ProviderDecision {
+  content: string | null;
+  toolCalls: ToolCallRequest[];
+}
+
 @Injectable({ providedIn: 'root' })
-export class MockAiProvider implements AIProvider {
+export class MockAiProvider extends BaseProvider {
   readonly id = 'mock-dash';
+  readonly type = 'custom';
   readonly name = 'Dash Mock';
-  readonly icon = 'smart_toy';
+  override readonly icon = 'smart_toy';
 
   private activeWorkflow: WorkflowState | null = null;
   private abortController: AbortController | null = null;
 
-  async isAuthenticated(): Promise<boolean> {
-    return true;
-  }
-
-  async authenticate(): Promise<void> {
-    return;
-  }
-
-  onAuthComplete(): void {
-    return;
-  }
-
-  logout(): void {
-    return;
-  }
-
-  async getAvailableModels(): Promise<AIModel[]> {
+  async getModels(_options?: ProviderOptions): Promise<ModelInfo[]> {
     return [
       {
-        id: 'dash-mock-v1',
-        name: 'Dash Mock v1',
-        description: 'Local deterministic test model for dashboard workflows.',
+        id: 'dash-mock-v2',
+        name: 'Dash Mock v2',
+        description: 'Local deterministic workflow provider for the Angular dashboard host.',
       },
     ];
   }
 
-  async sendMessage(request: AIRequest): Promise<AsyncIterable<AIStreamChunk>> {
-    const latest = request.messages[request.messages.length - 1];
-    const response = latest?.role === 'system'
-      ? this.handleSystemMessage(latest)
-      : this.handleUserMessage(latest?.content ?? '', request.messages);
-
-    return this.streamResponse(response);
+  async chat(request: ProviderRequest, _options?: ProviderOptions): Promise<ProviderResponse> {
+    const decision = this.generateDecision(request);
+    return {
+      content: decision.content,
+      toolCalls: decision.toolCalls,
+    };
   }
 
-  cancelRequest(): void {
-    this.abortController?.abort();
+  async *streamChat(
+    request: ProviderRequest,
+    _options?: ProviderOptions,
+  ): AsyncIterable<ProviderResponseChunk> {
+    const decision = this.generateDecision(request);
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+
+    if (decision.content) {
+      for (const chunk of this.chunkText(decision.content, 36)) {
+        if (signal.aborted) {
+          throw new DOMException('Request aborted', 'AbortError');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        yield {
+          delta: chunk,
+          contentDelta: chunk,
+        };
+      }
+    }
+
+    if (decision.toolCalls.length > 0) {
+      yield {
+        tool_calls: decision.toolCalls,
+      };
+    }
+
+    yield { done: true };
   }
 
-  private handleUserMessage(content: string, _messages: Message[]): string {
+  private generateDecision(request: ProviderRequest): ProviderDecision {
+    const availableTools = new Map((request.tools ?? []).map((tool) => [tool.name, tool]));
+    const latest = this.getLatestMessage(request.messages);
+
+    if (!latest) {
+      return this.textOnly('Tell me what dashboard panel you want to build or modify.');
+    }
+
+    if (latest.role === 'user') {
+      if (availableTools.has('aura_select_skill')) {
+        const skillName = this.getToolEnumValue(availableTools.get('aura_select_skill'), 'skillName');
+        return skillName
+          ? this.callTool('aura_select_skill', { skillName })
+          : this.textOnly('I am ready to help with the dashboard.');
+      }
+
+      return this.handleUserMessage(latest.content, availableTools);
+    }
+
+    if (latest.role === 'tool') {
+      const toolName = readString(latest.name);
+
+      if (toolName === 'aura_select_skill' || toolName === 'aura_switch_skill') {
+        const latestUser = this.getLatestUserMessage(request.messages);
+        return latestUser
+          ? this.handleUserMessage(latestUser.content, availableTools)
+          : this.textOnly('Dashboard mode is ready. What should I change?');
+      }
+
+      if (toolName === 'aura_ask_user') {
+        return this.handleUserMessage(latest.content, availableTools);
+      }
+
+      return this.handleToolResult(toolName, latest.content, availableTools);
+    }
+
+    return this.textOnly('Ready for the next dashboard action.');
+  }
+
+  private handleUserMessage(
+    content: string,
+    availableTools: Map<string, ToolDefinition>,
+  ): ProviderDecision {
     const normalized = content.toLowerCase().trim();
 
     if (!normalized) {
-      return 'Tell me what dashboard panel you want to build or modify.';
+      return this.askUser(availableTools, 'What would you like to change on the dashboard?');
     }
 
     if (this.matchesAny(normalized, ['switch', 'set', 'change']) && normalized.includes('theme')) {
@@ -81,7 +149,8 @@ export class MockAiProvider implements AIProvider {
           : 'system';
 
       this.activeWorkflow = null;
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'app.theme.change',
         { mode },
         `Switch the application theme to ${mode}.`,
@@ -97,10 +166,11 @@ export class MockAiProvider implements AIProvider {
         userRequest: content,
       };
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.get_panel_list',
         {},
-        'Check current dashboard panels before answering.',
+        'Checking the current dashboard panels.',
       );
     }
 
@@ -112,17 +182,21 @@ export class MockAiProvider implements AIProvider {
         targetHint: hint,
       };
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.get_panel_list',
         {},
-        'Confirm which panel exists before proposing deletion.',
+        'Looking up the current panels before deleting anything.',
       );
     }
 
     if (this.matchesAny(normalized, ['update', 'modify', 'change']) && !normalized.includes('theme')) {
       const patch = this.extractUpdatePatch(normalized);
       if (!patch) {
-        return 'Which panel should I update, and what should change?';
+        return this.askUser(
+          availableTools,
+          'Which panel should I update, and what should change?',
+        );
       }
 
       this.activeWorkflow = {
@@ -132,10 +206,11 @@ export class MockAiProvider implements AIProvider {
         targetHint: this.extractTypeHint(normalized),
       };
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.get_panel_list',
         {},
-        'Find the target panel before preparing an update diff.',
+        'Finding the target panel before preparing an update.',
       );
     }
 
@@ -143,7 +218,10 @@ export class MockAiProvider implements AIProvider {
       const panelDraft = this.extractCreateDraft(normalized);
 
       if (!panelDraft) {
-        return 'What data would you like to visualize first?';
+        return this.askUser(
+          availableTools,
+          'What data would you like to visualize first?',
+        );
       }
 
       this.activeWorkflow = {
@@ -152,92 +230,105 @@ export class MockAiProvider implements AIProvider {
         panelDraft,
       };
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.get_panel_list',
         {},
-        'Check existing panels before proposing a new one.',
+        'Checking the current dashboard before proposing a new panel.',
       );
     }
 
-    return 'I can help add, update, rename, or remove dashboard panels. Try asking for a weather chart or countries table.';
+    return this.textOnly(
+      'I can add, update, rename, or remove dashboard panels. Try asking for a weather chart or countries table.',
+    );
   }
 
-  private handleSystemMessage(message: Message): string {
-    const metadata = this.asRecord(message.metadata);
-    const metadataType = readString(metadata['type']);
-    const toolName = readString(metadata['toolName']);
+  private handleToolResult(
+    toolName: string,
+    content: string,
+    availableTools: Map<string, ToolDefinition>,
+  ): ProviderDecision {
+    const payload = this.parseToolPayload(content);
+    const record = this.asRecord(payload);
 
-    if (metadataType === 'action_cancelled') {
+    if (record['rejected'] === true) {
       this.activeWorkflow = null;
-      return 'No problem. I cancelled that action. I can suggest a safer alternative if you want.';
+      return this.textOnly('No problem. I cancelled that action. I can suggest a safer alternative if you want.');
     }
 
-    if (metadataType !== 'tool_result') {
-      return 'Ready for the next dashboard action.';
+    if (record['timedOut'] === true) {
+      this.activeWorkflow = null;
+      return this.textOnly('That request timed out while waiting for confirmation. We can try again whenever you are ready.');
     }
 
-    const payload = this.parseToolPayload(message.content);
+    if (record['error']) {
+      this.activeWorkflow = null;
+      return this.textOnly(`I hit a problem: ${readString(record['error'], 'Unknown error')}`);
+    }
 
     if (toolName === 'app.theme.change') {
       this.activeWorkflow = null;
-      const mode = readString(this.asRecord(payload)['mode'], 'system');
-      return `Theme updated to ${mode}. Want me to tune the dashboard layout next?`;
+      const mode = readString(record['mode'], 'system');
+      return this.textOnly(`Theme updated to ${mode}. Want me to tune the dashboard layout next?`);
     }
 
     if (toolName === 'dashboard.panel.create') {
       this.activeWorkflow = null;
-      const created = this.asRecord(this.asRecord(payload)['created']);
+      const created = this.asRecord(record['created']);
       const title = readString(created['title'], 'the new panel');
       const type = readString(created['type'], 'panel');
-      return `Done. ${title} (${type}) is now live. Would you like another panel or a quick rename?`;
+      return this.textOnly(`Done. ${title} (${type}) is now live. Would you like another panel or a quick rename?`);
     }
 
     if (toolName === 'dashboard.panel.update') {
       this.activeWorkflow = null;
-      const updated = this.asRecord(this.asRecord(payload)['updated']);
+      const updated = this.asRecord(record['updated']);
       const title = readString(updated['title'], 'the panel');
-      return `${title} is updated. Want me to compare it with another region or add a related stat card?`;
+      return this.textOnly(`${title} is updated. Want me to compare it with another region or add a related stat card?`);
     }
 
     if (toolName === 'dashboard.panel.delete') {
       this.activeWorkflow = null;
-      const deleted = this.asRecord(this.asRecord(payload)['deleted']);
+      const deleted = this.asRecord(record['deleted']);
       const title = readString(deleted['title'], 'the panel');
-      return `${title} was removed. I can add a replacement panel if you want.`;
+      return this.textOnly(`${title} was removed. I can add a replacement panel if you want.`);
     }
 
     if (toolName === 'dashboard.get_panel_list') {
-      return this.handlePanelListResult(payload);
+      return this.handlePanelListResult(payload, availableTools);
     }
 
     if (toolName === 'dashboard.get_source_catalog') {
-      return this.handleSourceCatalogResult(payload);
+      return this.handleSourceCatalogResult(payload, availableTools);
     }
 
     if (toolName === 'data.fetch_weather' || toolName === 'data.fetch_countries') {
-      return this.handleDataPreviewResult(toolName, payload);
+      return this.handleDataPreviewResult(toolName, payload, availableTools);
     }
 
-    return 'Tool result received. What should I do next?';
+    return this.textOnly('Tool result received. What should I do next?');
   }
 
-  private handlePanelListResult(payload: unknown): string {
+  private handlePanelListResult(
+    payload: unknown,
+    availableTools: Map<string, ToolDefinition>,
+  ): ProviderDecision {
     const panels = this.extractPanels(payload);
 
     if (!this.activeWorkflow) {
-      return this.describePanels(panels);
+      return this.textOnly(this.describePanels(panels));
     }
 
     if (this.activeWorkflow.intent === 'list') {
       this.activeWorkflow = null;
-      return this.describePanels(panels);
+      return this.textOnly(this.describePanels(panels));
     }
 
     if (this.activeWorkflow.intent === 'create') {
       const draft = this.activeWorkflow.panelDraft;
       if (!draft) {
         this.activeWorkflow = null;
-        return 'I need panel details first. What should this panel show?';
+        return this.askUser(availableTools, 'What should this panel show?');
       }
 
       const duplicate = panels.find(
@@ -246,13 +337,16 @@ export class MockAiProvider implements AIProvider {
 
       if (duplicate) {
         this.activeWorkflow = null;
-        return `You already have a ${duplicate.type} panel for this data source (${duplicate.title}). I can rename or update it instead.`;
+        return this.textOnly(
+          `You already have a ${duplicate.type} panel for this data source (${duplicate.title}). I can rename or update it instead.`,
+        );
       }
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.get_source_catalog',
         {},
-        'Verify the requested data source before fetching a preview.',
+        'Verifying the requested data source before fetching a preview.',
       );
     }
 
@@ -262,17 +356,17 @@ export class MockAiProvider implements AIProvider {
 
       if (!target || !patch) {
         this.activeWorkflow = null;
-        return 'I could not identify the panel to update. Which panel title should I use?';
+        return this.askUser(availableTools, 'I could not identify the panel to update. Which panel title should I use?');
       }
 
-      const summary = `Update ${target.title} with the requested changes.`;
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.panel.update',
         {
           panelId: target.id,
           patch,
         },
-        summary,
+        `Updating ${target.title} with the requested changes.`,
       );
     }
 
@@ -280,23 +374,27 @@ export class MockAiProvider implements AIProvider {
       const target = this.pickTargetPanel(panels, this.activeWorkflow.targetHint);
       if (!target) {
         this.activeWorkflow = null;
-        return 'I could not find a matching panel to delete. Which panel title do you want removed?';
+        return this.askUser(availableTools, 'I could not find a matching panel to delete. Which panel title should I remove?');
       }
 
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.panel.delete',
         { panelId: target.id },
-        `Delete panel \"${target.title}\" (${target.type}). This cannot be undone.`,
+        `Deleting ${target.title} (${target.type}).`,
       );
     }
 
-    return this.describePanels(panels);
+    return this.textOnly(this.describePanels(panels));
   }
 
-  private handleSourceCatalogResult(payload: unknown): string {
+  private handleSourceCatalogResult(
+    payload: unknown,
+    availableTools: Map<string, ToolDefinition>,
+  ): ProviderDecision {
     if (!this.activeWorkflow || this.activeWorkflow.intent !== 'create' || !this.activeWorkflow.panelDraft) {
       const sources = this.extractSources(payload).map((source) => source.id).join(', ');
-      return `Available data sources: ${sources || 'none'}.`;
+      return this.textOnly(`Available data sources: ${sources || 'none'}.`);
     }
 
     const draft = this.activeWorkflow.panelDraft;
@@ -304,33 +402,39 @@ export class MockAiProvider implements AIProvider {
 
     if (!sources.some((source) => source.id === draft.dataSource)) {
       this.activeWorkflow = null;
-      return 'That data source is not available. Try Open-Meteo weather or REST Countries data.';
+      return this.textOnly('That data source is not available. Try Open-Meteo weather or REST Countries data.');
     }
 
     if (draft.dataSource === 'open-meteo.weather') {
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'data.fetch_weather',
         {
           city: readString(draft.query?.['city'], 'Paris'),
           days: Number(draft.query?.['days'] ?? 7),
         },
-        'Fetch a weather preview before creating the panel.',
+        'Fetching a weather preview before creating the panel.',
       );
     }
 
-    return this.actionProposal(
+    return this.callNamedTool(
+      availableTools,
       'data.fetch_countries',
       {
         region: readString(draft.query?.['region'], 'all'),
         limit: Number(draft.query?.['limit'] ?? 12),
       },
-      'Fetch a country statistics preview before creating the panel.',
+      'Fetching a country statistics preview before creating the panel.',
     );
   }
 
-  private handleDataPreviewResult(toolName: string, payload: unknown): string {
+  private handleDataPreviewResult(
+    toolName: string,
+    payload: unknown,
+    availableTools: Map<string, ToolDefinition>,
+  ): ProviderDecision {
     if (!this.activeWorkflow || this.activeWorkflow.intent !== 'create' || !this.activeWorkflow.panelDraft) {
-      return 'Preview data loaded. What panel should I create with it?';
+      return this.textOnly('Preview data loaded. What panel should I create with it?');
     }
 
     const draft = this.activeWorkflow.panelDraft;
@@ -339,20 +443,22 @@ export class MockAiProvider implements AIProvider {
       const weather = this.asRecord(payload);
       const city = readString(weather['city'], readString(draft.query?.['city'], 'the city'));
       const avg = readString(weather['averageTemp'], 'n/a');
-      return this.actionProposal(
+      return this.callNamedTool(
+        availableTools,
         'dashboard.panel.create',
         { panelConfig: draft },
-        `Preview: ${city} weather loaded, average ${avg} C. Create \"${draft.title}\" as a ${draft.type}.`,
+        `Preview looks good: ${city} weather loaded, average ${avg} C. Creating ${draft.title}.`,
       );
     }
 
     const countries = this.asRecord(payload);
     const region = readString(countries['region'], readString(draft.query?.['region'], 'all'));
     const rows = Array.isArray(countries['rows']) ? countries['rows'].length : 0;
-    return this.actionProposal(
+    return this.callNamedTool(
+      availableTools,
       'dashboard.panel.create',
       { panelConfig: draft },
-      `Preview: ${rows} ${region} countries loaded. Create \"${draft.title}\" as a ${draft.type}.`,
+      `Preview looks good: ${rows} ${region} countries loaded. Creating ${draft.title}.`,
     );
   }
 
@@ -392,7 +498,7 @@ export class MockAiProvider implements AIProvider {
       query: { region, limit: resolvedType === 'bar-chart' ? 10 : 12 },
       displayConfig: {
         xKey: 'name',
-        yKey: resolvedType === 'bar-chart' ? 'population' : 'population',
+        yKey: 'population',
         metricLabel: 'Population',
       },
       size: resolvedType === 'stat-card' ? { width: 320, height: 220 } : { width: 460, height: 320 },
@@ -566,28 +672,84 @@ export class MockAiProvider implements AIProvider {
 
   private parseToolPayload(content: string): unknown {
     const trimmed = content.trim();
-    const withoutPrefix = trimmed.startsWith('Tool result:')
-      ? trimmed.replace(/^Tool result:\s*/u, '')
-      : trimmed.replace(/^Tool error:\s*/u, '');
+
+    if (!trimmed) {
+      return {};
+    }
 
     try {
-      return JSON.parse(withoutPrefix);
+      return JSON.parse(trimmed);
     } catch {
-      return { raw: withoutPrefix };
+      return { raw: trimmed };
     }
   }
 
-  private actionProposal(name: string, args: Record<string, unknown>, summary: string): string {
-    return JSON.stringify(
-      {
-        type: 'action_proposal',
-        name,
-        arguments: args,
-        summary,
-      },
-      null,
-      2,
-    );
+  private askUser(
+    availableTools: Map<string, ToolDefinition>,
+    question: string,
+  ): ProviderDecision {
+    if (!availableTools.has('aura_ask_user')) {
+      return this.textOnly(question);
+    }
+
+    return this.callTool('aura_ask_user', { question });
+  }
+
+  private callNamedTool(
+    availableTools: Map<string, ToolDefinition>,
+    name: string,
+    args: Record<string, unknown>,
+    content: string,
+  ): ProviderDecision {
+    if (!availableTools.has(name)) {
+      return this.textOnly(`I need ${name}, but it is not available right now.`);
+    }
+
+    return this.callTool(name, args, content);
+  }
+
+  private callTool(
+    name: string,
+    args: Record<string, unknown>,
+    content: string | null = null,
+  ): ProviderDecision {
+    return {
+      content,
+      toolCalls: [
+        {
+          id: name,
+          callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          arguments: args,
+        },
+      ],
+    };
+  }
+
+  private textOnly(content: string): ProviderDecision {
+    return {
+      content,
+      toolCalls: [],
+    };
+  }
+
+  private getLatestMessage(messages: ProviderMessage[]): ProviderMessage | undefined {
+    return [...messages].reverse().find((message) => message.role !== 'system');
+  }
+
+  private getLatestUserMessage(messages: ProviderMessage[]): ProviderMessage | undefined {
+    return [...messages].reverse().find((message) => message.role === 'user');
+  }
+
+  private getToolEnumValue(
+    tool: ToolDefinition | undefined,
+    fieldName: string,
+  ): string | undefined {
+    const schema = this.asRecord(tool?.inputSchema);
+    const properties = this.asRecord(schema['properties']);
+    const field = this.asRecord(properties[fieldName]);
+    const values = Array.isArray(field['enum']) ? field['enum'] : [];
+    const first = values.find((value) => typeof value === 'string');
+    return typeof first === 'string' ? first : undefined;
   }
 
   private matchesAny(value: string, terms: string[]): boolean {
@@ -623,27 +785,6 @@ export class MockAiProvider implements AIProvider {
     }
 
     return value.charAt(0).toUpperCase() + value.slice(1);
-  }
-
-  private streamResponse(text: string): AsyncIterable<AIStreamChunk> {
-    this.abortController = new AbortController();
-    const signal = this.abortController.signal;
-    const chunks = this.chunkText(text, 28);
-
-    return {
-      [Symbol.asyncIterator]: async function* () {
-        for (const chunk of chunks) {
-          if (signal.aborted) {
-            throw new DOMException('Request aborted', 'AbortError');
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          yield { delta: chunk, done: false };
-        }
-
-        yield { delta: '', done: true };
-      },
-    };
   }
 
   private chunkText(value: string, chunkSize: number): string[] {

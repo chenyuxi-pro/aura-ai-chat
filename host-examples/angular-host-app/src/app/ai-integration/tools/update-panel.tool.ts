@@ -1,12 +1,13 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import type { PanelConfig } from '../../core/models/panel.model';
 import { DashboardService } from '../../core/services/dashboard.service';
 import {
   asRecord,
+  customElementPreview,
   normalizeDataSource,
   normalizePanelType,
-  readString,
   readNumber,
+  readString,
   textResult,
 } from './tool-utils';
 
@@ -55,12 +56,11 @@ function normalizePatch(raw: unknown): Partial<PanelConfig> {
   return normalized;
 }
 
-export function createUpdatePanelTool(dashboardService: DashboardService): Tool {
+export function createUpdatePanelTool(dashboardService: DashboardService): AuraTool {
   return {
     name: 'dashboard.panel.update',
     title: 'Update Panel',
     description: 'Updates an existing panel with partial config patch.',
-    label: 'Update panel',
     risk: 'moderate',
     inputSchema: {
       type: 'object',
@@ -71,16 +71,15 @@ export function createUpdatePanelTool(dashboardService: DashboardService): Tool 
       required: ['panelId', 'patch'],
     },
     preview: {
-      element: 'data-diff-view',
-      buildProps: async (args) => {
+      buildContent: async (args) => {
         const panelId = readString(args['panelId']);
         const patch = normalizePatch(args['patch']);
         const diff = dashboardService.previewUpdatedPanel(panelId, patch);
 
-        return {
+        return customElementPreview('data-diff-view', {
           before: diff.before,
           after: diff.after,
-        };
+        });
       },
     },
     execute: async (input) => {

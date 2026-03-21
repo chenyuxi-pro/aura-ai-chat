@@ -1,5 +1,5 @@
 import "./src/index.js";
-import { AuraToolRisk } from "./src/index.js";
+import { AuraEventType, AuraToolRisk } from "./src/index.js";
 import type {
     AuraConfig,
     AuraEvent,
@@ -1188,7 +1188,7 @@ function applyToWidget() {
     settingsPanel.config = cloneEditorConfig();
 
     eventMonitor.pushEvent({
-        type: "debug",
+        type: AuraEventType.Debug,
         timestamp: Date.now(),
         payload: { message: "Config applied from sidebar." },
     });

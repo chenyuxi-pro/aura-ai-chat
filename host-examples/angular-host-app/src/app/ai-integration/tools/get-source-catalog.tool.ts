@@ -1,8 +1,8 @@
-import type { Tool } from 'aura-ai-chat';
+import type { AuraTool } from 'aura-ai-chat';
 import { DashboardService } from '../../core/services/dashboard.service';
 import { textResult } from './tool-utils';
 
-export function createGetSourceCatalogTool(dashboardService: DashboardService): Tool {
+export function createGetSourceCatalogTool(dashboardService: DashboardService): AuraTool {
   return {
     name: 'dashboard.get_source_catalog',
     title: 'Get Data Source Catalog',

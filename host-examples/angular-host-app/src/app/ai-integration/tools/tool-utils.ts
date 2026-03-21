@@ -1,4 +1,4 @@
-import type { ToolResult } from 'aura-ai-chat';
+import type { AuraToolResult, ToolResultContent } from 'aura-ai-chat';
 import type { DataSourceId, PanelConfig, PanelType } from '../../core/models/panel.model';
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -34,7 +34,10 @@ export function normalizePanelType(value: unknown, fallback: PanelType = 'table'
   return fallback;
 }
 
-export function normalizeDataSource(value: unknown, fallback: DataSourceId = 'rest-countries.countries'): DataSourceId {
+export function normalizeDataSource(
+  value: unknown,
+  fallback: DataSourceId = 'rest-countries.countries',
+): DataSourceId {
   const source = readString(value);
   if (source === 'open-meteo.weather' || source === 'rest-countries.countries') {
     return source;
@@ -75,14 +78,29 @@ export function normalizePanelConfigInput(raw: unknown): PanelConfig {
   };
 }
 
-export function textResult(payload: unknown, isError = false): ToolResult {
+export function textResult(payload: unknown, isError = false): AuraToolResult {
+  const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+
   return {
     content: [
       {
         type: 'text',
-        text: typeof payload === 'string' ? payload : JSON.stringify(payload),
+        text,
       },
     ],
     isError,
   };
+}
+
+export function customElementPreview(
+  element: string,
+  props: Record<string, unknown>,
+): ToolResultContent[] {
+  return [
+    {
+      type: 'custom-element',
+      element,
+      props,
+    },
+  ];
 }

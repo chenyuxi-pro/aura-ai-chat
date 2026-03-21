@@ -275,6 +275,12 @@ export class CommunicationManager {
       this.currentIterationMsg = iterMsg;
       historyManager.pushMessage(iterMsg);
       this.callbacks.onMessagePushed();
+      eventBus.emit(AuraEventType.Debug, {
+        message: "Starting agent iteration",
+        iteration,
+        activeSkill: this.activeSkill?.name ?? null,
+        conversationId: historyManager.getConversation().id,
+      });
 
       const resources = config.agent?.resources;
       const resourceContents = await readResources(resources);
@@ -391,6 +397,9 @@ export class CommunicationManager {
               askStep.durationMs = Date.now() - askStep.timestamp;
               await this.updateIterationMessage(askStep);
               this.callbacks.onStepUpdate({ ...askStep });
+              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
+                step: { ...askStep },
+              });
             }
             const timeoutMsg = createToolResultMessage(
               toolCall,
@@ -427,6 +436,12 @@ export class CommunicationManager {
 
         const tool = skillManager.getTool(toolCall.id);
         if (!tool) {
+          eventBus.emit(AuraEventType.ToolError, {
+            tool: toolCall.id,
+            toolId: toolCall.id,
+            callId: toolCall.callId,
+            error: `Tool "${toolCall.id}" is not registered.`,
+          });
           const errorResult = createToolResultMessage(
             toolCall,
             JSON.stringify({
@@ -473,6 +488,9 @@ export class CommunicationManager {
               toolStep.durationMs = Date.now() - toolStep.timestamp;
               await this.updateIterationMessage(toolStep);
               this.callbacks.onStepUpdate({ ...toolStep });
+              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
+                step: { ...toolStep },
+              });
             }
             const timeoutResult = createToolResultMessage(
               toolCall,
@@ -516,6 +534,9 @@ export class CommunicationManager {
               toolStep.detail = `User "${userId}" rejected "${tool.name}" at ${timestamp}`;
               await this.updateIterationMessage(toolStep);
               this.callbacks.onStepUpdate({ ...toolStep });
+              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
+                step: { ...toolStep },
+              });
             }
             continue;
           }
@@ -531,10 +552,37 @@ export class CommunicationManager {
         }
 
         const ctx = buildToolContext(config, historyManager, resources);
+        eventBus.emit(AuraEventType.ToolStart, {
+          tool: tool.name,
+          toolId: toolCall.id,
+          callId: toolCall.callId,
+          arguments: toolCall.arguments,
+          conversationId: ctx.conversationId,
+        });
         const result = await toolRunner.execute(toolCall, ctx);
         eventBus.emit(AuraEventType.ToolCalled, {
+          tool: tool.name,
+          toolId: toolCall.id,
+          callId: toolCall.callId,
           entry: result.logEntry,
         });
+        if (!result.logEntry?.error) {
+          eventBus.emit(AuraEventType.ToolSuccess, {
+            tool: tool.name,
+            toolId: toolCall.id,
+            callId: toolCall.callId,
+            entry: result.logEntry,
+            result: result.content,
+          });
+        } else {
+          eventBus.emit(AuraEventType.ToolError, {
+            tool: tool.name,
+            toolId: toolCall.id,
+            callId: toolCall.callId,
+            entry: result.logEntry,
+            error: result.logEntry.error,
+          });
+        }
 
         if (toolStep) {
           if (!result.logEntry?.error) {
@@ -562,7 +610,9 @@ export class CommunicationManager {
         );
         await historyManager.pushAndPersistMessage(toolResultMsg);
         this.callbacks.onMessagePushed();
-        if (toolStep) await this.completeStep(toolStep, modelText);
+        if (toolStep && !result.logEntry?.error) {
+          await this.completeStep(toolStep, modelText);
+        }
       }
 
       if (!shouldContinue) {

@@ -1,145 +1,104 @@
 import { Injectable } from '@angular/core';
-import type { ConversationHistoryProvider, ConversationMeta, Message } from 'aura-ai-chat';
-import type { Conversation, ConversationSummary } from '../models/conversation.model';
+import type { ChatMessage, Conversation, IConversationManager } from 'aura-ai-chat';
 
 const STORAGE_KEY = 'angular-host-app:conversations';
 
+interface StoredConversationRecord {
+  id: string;
+  title?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  messages?: unknown;
+}
+
+interface ConversationCandidate {
+  id: string;
+  title?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  messages?: unknown;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ConversationService {
-  async onNew(): Promise<Conversation> {
-    const now = new Date().toISOString();
-    const conversation: Conversation = {
-      id: crypto.randomUUID(),
-      title: 'New conversation',
-      createdAt: now,
-      updatedAt: now,
-      messages: [],
-    };
-
-    const conversations = this.readStore();
-    conversations[conversation.id] = conversation;
-    this.writeStore(conversations);
-
-    return conversation;
-  }
-
-  async onLoad(id: string): Promise<Message[]> {
-    const conversation = this.readStore()[id];
-    return conversation?.messages ?? [];
-  }
-
-  async onSave(conversation: Conversation): Promise<void> {
-    const store = this.readStore();
-    store[conversation.id] = {
-      ...conversation,
-      updatedAt: new Date().toISOString(),
-    };
-    this.writeStore(store);
-  }
-
-  async onHistory(): Promise<ConversationSummary[]> {
-    const store = this.readStore();
-    return Object.values(store)
-      .map((conversation) => ({
-        id: conversation.id,
-        title: conversation.title,
-        createdAt: conversation.createdAt,
-        updatedAt: conversation.updatedAt,
-        messageCount: conversation.messages.length,
-      }))
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  }
-
-  getCallbacks(): ConversationHistoryProvider {
+  getManager(): IConversationManager {
     return {
-      createConversation: async (): Promise<ConversationMeta> => {
-        const conversation = await this.onNew();
-        return this.toMeta(conversation);
-      },
-      listConversations: async (): Promise<ConversationMeta[]> => {
-        const history = await this.onHistory();
-        return history.map((entry) => ({
-          id: entry.id,
-          title: entry.title,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
-        }));
-      },
-      getMessages: async (conversationId: string): Promise<Message[]> => {
-        return this.onLoad(conversationId);
-      },
-      saveMessage: async (conversationId: string, message: Message): Promise<void> => {
+      createConversation: async (conversation?: Conversation): Promise<Conversation> => {
+        const created = this.normalizeConversation(
+          conversation ?? {
+            id: crypto.randomUUID(),
+            title: 'New conversation',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messages: [],
+          },
+        );
+
         const store = this.readStore();
+        store[created.id] = created;
+        this.writeStore(store);
+        return created;
+      },
+      loadConversation: async (conversationId: string): Promise<Conversation | null> => {
+        return this.readStore()[conversationId] ?? null;
+      },
+      listConversations: async (): Promise<Conversation[]> => {
+        return Object.values(this.readStore()).sort((left, right) => right.updatedAt - left.updatedAt);
+      },
+      saveMessage: async (conversationId: string, message: ChatMessage): Promise<void> => {
+        const store = this.readStore();
+        const timestamp = this.toTimestamp(message.timestamp);
         const existing = store[conversationId] ?? {
           id: conversationId,
           title: 'New conversation',
-          createdAt: message.createdAt,
-          updatedAt: message.createdAt,
+          createdAt: timestamp,
+          updatedAt: timestamp,
           messages: [],
         };
 
-        const updatedMessages = [...existing.messages, message];
-        const inferredTitle =
-          existing.title && existing.title !== 'New conversation'
-            ? existing.title
-            : this.inferTitleFromMessages(updatedMessages);
+        const messages = [...existing.messages];
+        const existingIndex = messages.findIndex((entry) => entry.id === message.id);
+
+        if (existingIndex >= 0) {
+          messages[existingIndex] = message;
+        } else {
+          messages.push(message);
+        }
 
         const updatedConversation: Conversation = {
           ...existing,
-          title: inferredTitle,
-          updatedAt: new Date().toISOString(),
-          messages: updatedMessages,
+          title: this.inferTitle(existing.title, messages),
+          updatedAt: Date.now(),
+          messages,
         };
 
-        await this.onSave(updatedConversation);
+        store[conversationId] = updatedConversation;
+        this.writeStore(store);
       },
       deleteConversation: async (conversationId: string): Promise<void> => {
         const store = this.readStore();
         delete store[conversationId];
         this.writeStore(store);
       },
-      updateConversation: async (
-        conversationId: string,
-        patch: Partial<ConversationMeta>,
-      ): Promise<void> => {
-        const store = this.readStore();
-        const existing = store[conversationId];
-        if (!existing) {
-          return;
-        }
-
-        store[conversationId] = {
-          ...existing,
-          title: patch.title ?? existing.title,
-          updatedAt: new Date().toISOString(),
-        };
-
-        this.writeStore(store);
+      clearHistory: async (): Promise<void> => {
+        localStorage.removeItem(STORAGE_KEY);
       },
     };
   }
 
-  private inferTitleFromMessages(messages: Message[]): string {
-    const firstUserMessage = messages.find((message) => message.role === 'user');
-    if (!firstUserMessage) {
-      return 'New conversation';
+  private inferTitle(currentTitle: string | undefined, messages: ChatMessage[]): string {
+    if (currentTitle && currentTitle !== 'New conversation') {
+      return currentTitle;
     }
 
-    const trimmed = firstUserMessage.content.trim();
+    const firstUserMessage = messages.find((message) => message.role === 'user');
+    const trimmed = firstUserMessage?.content.trim();
+
     if (!trimmed) {
       return 'New conversation';
     }
 
     return trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
-  }
-
-  private toMeta(conversation: Conversation): ConversationMeta {
-    return {
-      id: conversation.id,
-      title: conversation.title,
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-    };
   }
 
   private readStore(): Record<string, Conversation> {
@@ -149,11 +108,24 @@ export class ConversationService {
     }
 
     try {
-      const parsed = JSON.parse(raw) as Record<string, Conversation>;
+      const parsed = JSON.parse(raw) as Record<string, StoredConversationRecord>;
       if (!parsed || typeof parsed !== 'object') {
         return {};
       }
-      return parsed;
+
+      return Object.fromEntries(
+        Object.entries(parsed).map(([id, value]) => {
+          const normalized = this.normalizeConversation({
+            id,
+            title: typeof value?.title === 'string' ? value.title : 'New conversation',
+            createdAt: value?.createdAt,
+            updatedAt: value?.updatedAt,
+            messages: value?.messages,
+          });
+
+          return [normalized.id, normalized];
+        }),
+      );
     } catch {
       return {};
     }
@@ -161,5 +133,52 @@ export class ConversationService {
 
   private writeStore(store: Record<string, Conversation>): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  }
+
+  private normalizeConversation(value: ConversationCandidate): Conversation {
+    const messages = Array.isArray(value.messages)
+      ? value.messages.filter(this.isChatMessage).map((message) => ({
+          ...message,
+          timestamp: this.toTimestamp(message.timestamp),
+        }))
+      : [];
+
+    const createdAt = this.toTimestamp(value.createdAt, messages[0]?.timestamp ?? Date.now());
+    const updatedAt = this.toTimestamp(
+      value.updatedAt,
+      messages[messages.length - 1]?.timestamp ?? createdAt,
+    );
+
+    return {
+      id: value.id,
+      title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : 'New conversation',
+      createdAt,
+      updatedAt,
+      messages,
+    };
+  }
+
+  private isChatMessage(value: unknown): value is ChatMessage {
+    return typeof value === 'object' && value !== null && typeof (value as ChatMessage).id === 'string';
+  }
+
+  private toTimestamp(value: unknown, fallback = Date.now()): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return fallback;
   }
 }

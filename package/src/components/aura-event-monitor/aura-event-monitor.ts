@@ -282,19 +282,24 @@ export class AuraEventMonitorElement extends LitElement {
 
     switch (event.type) {
       case AuraEventType.MessageSent:
-      case AuraEventType.MESSAGE_SENT:
         return this.toInlineText(
           `[User] ${this.extractMessageContent(payload["message"])}`,
         );
       case AuraEventType.MessageReceived:
-      case AuraEventType.MESSAGE_RECEIVED:
         return this.toInlineText(
           `[AI] ${this.extractMessageContent(payload["message"])}`,
+        );
+      case AuraEventType.ConversationStarted:
+      case AuraEventType.ConversationEnded:
+      case AuraEventType.ConversationDeleted:
+      case AuraEventType.HistoryCleared:
+        return this.toInlineText(
+          `[System] ${this.formatConversationSummary(event.type, payload)}`,
         );
       case AuraEventType.ToolCalled: {
         const entry = payload["entry"] as Record<string, unknown> | undefined;
         return this.toInlineText(
-          `[Tool] ${`${String(entry?.["toolName"] ?? entry?.["tool"] ?? "tool")} ${String(entry?.["status"] ?? "").trim()}`.trim()}`,
+          `[Tool] ${`${String(entry?.["toolId"] ?? payload["tool"] ?? payload["toolId"] ?? "tool")} ${String(entry?.["status"] ?? "").trim()}`.trim()}`,
         );
       }
       case AuraEventType.ToolStart:
@@ -324,7 +329,6 @@ export class AuraEventMonitorElement extends LitElement {
         );
       }
       case AuraEventType.Error:
-      case AuraEventType.ERROR:
         return this.toInlineText(
           `[System] ${this.extractErrorMessage(payload["error"])}`,
         );
@@ -346,6 +350,27 @@ export class AuraEventMonitorElement extends LitElement {
     if (iterations != null) parts.push(`iterations=${iterations}`);
     if (durationMs != null) parts.push(`duration=${durationMs}ms`);
     return parts.join(" ");
+  }
+
+  private formatConversationSummary(
+    type: AuraEventType,
+    payload: Record<string, unknown>,
+  ): string {
+    const conversationId = String(payload["conversationId"] ?? "").trim();
+    const reason = String(payload["reason"] ?? "").trim();
+
+    switch (type) {
+      case AuraEventType.ConversationStarted:
+        return `conversation started ${conversationId}`.trim();
+      case AuraEventType.ConversationEnded:
+        return `conversation ended ${conversationId}${reason ? ` (${reason})` : ""}`.trim();
+      case AuraEventType.ConversationDeleted:
+        return `conversation deleted ${conversationId}`.trim();
+      case AuraEventType.HistoryCleared:
+        return "history cleared";
+      default:
+        return "conversation event";
+    }
   }
 
   private extractMessageContent(message: unknown): string {
