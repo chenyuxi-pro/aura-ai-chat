@@ -1,86 +1,64 @@
-# Aura AI Chat Repo
+# Aura AI Chat Monorepo
 
-This repository contains the `aura-ai-chat` Web Component package plus host-app examples used to validate it in real application flows.
+Welcome to the **Aura AI Chat** monorepo! This workspace is orchestrated using `pnpm` workspaces and `TurboRepo`.
 
-## What is here
+## Project Structure
 
-- [`package/`](./package) - the publishable `aura-ai-chat` library, demo app, and package-level documentation
-- [`host-examples/angular-host-app/`](./host-examples/angular-host-app) - an Angular host app that integrates the widget in a more realistic UI
-- [`LICENSE`](./LICENSE) - MIT license
+- `packages/lib/`: The core framework-agnostic AI chat widget and `playground` testbed.
+- `demos/`:
+  - `angular/`: Angular integration demonstration.
+  - `react/`: React wrapper demonstration.
+  - `vue/`: Vue integration demonstration.
+- `scripts/`: Shared CLI scripts (like `demo.js`).
+- `docs/`: Documentation site.
 
-## Main package
+## Getting Started
 
-The core library lives in [`package/`](./package).
+1. **Install Dependencies**
+   Ensure you have installed pnpm globally (`npm i -g pnpm`), then run:
+   ```bash
+   pnpm install
+   ```
 
-It includes:
+2. **Core Development**
+   Boot the vanilla playground natively using Vite:
+   ```bash
+   pnpm run dev
+   ```
 
-- the `<aura-chat>` widget
-- the `aura-event-monitor` component
-- agentic loop support with skills, tools, and human-in-the-loop steps
-- WebMCP bridging
-- a Vite demo app
+3. **Explore Framework Demos**
+   Boot a specific framework dashboard demo (which automates building the core library first):
+   ```bash
+   pnpm run demo angular # runs on localhost:4200
+   pnpm run demo react   # runs on localhost:4300
+   pnpm run demo vue     # runs on localhost:4400
+   ```
+   Or run all demos in parallel:
+   ```bash
+   pnpm run demo
+   ```
 
-Start here for API details and package usage:
+## Publishing
 
-- [`package/README.md`](./package/README.md)
-- [`package/docs/ui-action-schemas.md`](./package/docs/ui-action-schemas.md)
-- [`package/docs/interaction-flow.md`](./package/docs/interaction-flow.md)
-
-## Repo structure
-
-```text
-. 
-|-- package/
-|-- host-examples/
-|   `-- angular-host-app/
-|-- LICENSE
-`-- README.md
-```
-
-## Local development
-
-### Run the package demo
-
-```bash
-cd package
-npm install
-npm run start
-```
-
-Open `http://localhost:5178/`.
-
-### Build the package
+This is what to do to publish `aura-ai-chat` to npm:
 
 ```bash
-cd package
-npm install
-npm run build
+# 1. login to npm (one time only)
+npm login
+
+# 2. describe your change
+pnpm changeset
+# → prompts: patch / minor / major
+# → prompts: describe the change
+
+# 3. bump version + generate CHANGELOG
+pnpm version
+
+# 4. build + publish
+pnpm release
 ```
 
-### Run the Angular host example
-
-Build the package first, then start the host app:
-
+After step 4, anyone can install it with:
 ```bash
-cd package
-npm install
-npm run build
-
-cd ../host-examples/angular-host-app
-npm install
-npm run start
+npm install aura-ai-chat
 ```
-
-Open `http://localhost:4200/`.
-
-More details are in [`host-examples/angular-host-app/README.md`](./host-examples/angular-host-app/README.md).
-
-## Where to look next
-
-- If you want to use the widget in another app, start with [`package/README.md`](./package/README.md).
-- If you want a realistic integration reference, use [`host-examples/angular-host-app/`](./host-examples/angular-host-app).
-- If you want to inspect the current demo wiring, look at [`package/main.ts`](./package/main.ts).
-
-## License
-
-MIT

@@ -1,0 +1,17 @@
+{
+  "name": "@aura-ai-chat/demo-vue",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "aura-ai-chat": "workspace:*",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "@vitejs/plugin-vue": "^5.0.0"
+  }
+}

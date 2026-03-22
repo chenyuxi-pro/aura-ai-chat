@@ -1,0 +1,18 @@
+{
+  "name": "aura-ai-chat-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "build": "turbo run build --filter=aura-ai-chat",
+    "dev": "turbo run dev --filter=./packages/*",
+    "demo": "node scripts/demo.js",
+    "clean": "turbo run clean",
+    "release": "node scripts/release.js",
+    "changeset": "changeset",
+    "version": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.30.0",
+    "turbo": "latest"
+  }
+}

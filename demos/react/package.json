@@ -1,0 +1,21 @@
+{
+  "name": "@aura-ai-chat/demo-react",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "aura-ai-chat": "workspace:*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@lit/react": "^1.0.6"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  }
+}
