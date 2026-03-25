@@ -5,16 +5,14 @@
   width: var(--aura-width, 100%);
   background: var(--aura-bg, #fff);
   color: var(--aura-color, #1a1a1a);
-  font-family: var(
-    --aura-font-family,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    sans-serif
-  );
+  font-family: var(--aura-font-family,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif);
   overflow: hidden;
-  border-left: 1px solid var(--aura-border-color, #e5e7eb);
+  border: 1px solid var(--aura-border-color, #e5e7eb);
   min-height: 0;
 }
 
@@ -269,6 +267,7 @@
 }
 
 @keyframes bounce {
+
   0%,
   60%,
   100% {

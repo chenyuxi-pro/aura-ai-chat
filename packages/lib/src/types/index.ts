@@ -399,6 +399,7 @@ export enum AuraEventType {
   ConversationStarted = "conversation-started",
   ConversationEnded = "conversation-ended",
   ConversationDeleted = "conversation-deleted",
+  ChatClosed = "chat-closed",
   HistoryCleared = "history-cleared",
   MessageSent = "message-sent",
   MessageReceived = "message-received",

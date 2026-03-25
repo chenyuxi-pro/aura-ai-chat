@@ -1,21 +1,61 @@
-# Aura AI Chat Monorepo
+<div align="center">
+  <h1>✨ Aura AI Chat</h1>
+  <p><strong>A production-grade, framework-agnostic AI chat widget built as a Web Component.</strong></p>
+  
+  <!-- Add your badges here: -->
+  <!-- <img src="https://img.shields.io/npm/v/@aura-ai-labs/ai-chat?color=success&style=flat-square" alt="npm version" /> -->
+</div>
 
-Welcome to the **Aura AI Chat** monorepo! This workspace is orchestrated using `pnpm` workspaces and `TurboRepo`.
+---
 
-## Project Structure
+Welcome to the **Aura AI Chat** monorepo! This workspace is orchestrated using `pnpm` workspaces and `TurboRepo`. 
 
-- `packages/lib/`: The core framework-agnostic AI chat widget and `playground` testbed.
-- `demos/`:
-  - `angular/`: Angular integration demonstration.
-  - `react/`: React wrapper demonstration.
-  - `vue/`: Vue integration demonstration.
-- `scripts/`: Shared CLI scripts (like `demo.js`).
-- `docs/`: Documentation site.
+Aura AI Chat allows you to easily drop a powerful, customizable AI assistant into any web application, regardless of the framework you choose.
 
-## Getting Started
+## 🎯 Why I built this?
+
+I wanted to create a resilient UI layer that leverages the existing ecosystem instead of starting from scratch every time. I was tired of "reinventing the wheel" for every AI project in the company. 
+
+I set out with **5 core objectives**:
+1. **Maximize reusability:** Provide a framework-agnostic, drop-in Web Component to effortlessly agentify any existing application.
+2. **Consistent UI:** Give internal tools a unified, premium AI chat look and feel.
+3. **Native Tooling/Skills:** Rely on progressive disclosure (client-side tool calling) rather than dumping massive state into the context window, saving a massive amount of tokens and latency.
+4. **WebMCP Bridge:** Make the host website ready for Model Context Protocol integration right out of the box. 
+5. **Enterprise Governance:** Provide dedicated channels for enterprise-level observability, custom UI injection, and human-in-the-loop (HITL) execution controls.
+
+## 🎥 See it in Action
+
+> **Tip:** You can drag and drop your `.mp4` or `.gif` video files directly into the GitHub editor to upload them and get a working URL! Replace the placeholder links below with your uploaded media URLs.
+
+**[ 🎬 INSERT YOUR DASHBOARD DEMO VIDEO HERE ]**
+<!-- Example: <video src="https://github.com/user-attachments/assets/..." width="100%"></video> -->
+
+**[ 🎬 INSERT YOUR HUMAN-IN-THE-LOOP APPROVAL VIDEO HERE ]**
+
+## ⚡ Features
+
+- **Framework Agnostic:** Built with Lit Web Components. Works natively in Angular, React, Vue, or Vanilla JS.
+- **Agentic Loop:** Full iteration tracking, skills execution, and step-by-step timeline rendering.
+- **Human-in-the-Loop:** Explicit support for `safe`, `moderate`, and `destructive` tool categorizations with inline approval/rejection UI.
+- **Bring Your Own LLM:** Includes a built-in GitHub Copilot provider, and easily extensible interfaces for any custom LLM or API provider.
+- **WebMCP Integration:** Effortlessly export Aura tools to the page and import compatible tools from your browser.
+
+## 🏗️ Project Structure
+
+This monorepo is divided into the core library and several host framework demonstrations:
+
+| Directory | Description |
+|---|---|
+| 📦 **`packages/lib/`** | The core framework-agnostic AI chat widget and `playground` testbed. |
+| 🅰️ **`demos/angular/`** | Angular integration demonstration showing a full dashboard. |
+| ⚛️ **`demos/react/`** | React wrapper demonstration. |
+| 💚 **`demos/vue/`** | Vue integration demonstration. |
+| 🛠️ **`scripts/`** | Shared CLI orchestrator scripts (like `demo.js`). |
+
+## 🚀 Getting Started
 
 1. **Install Dependencies**
-   Ensure you have installed pnpm globally (`npm i -g pnpm`), then run:
+   Ensure you have installed `pnpm` globally (`npm i -g pnpm`), then run:
    ```bash
    pnpm install
    ```
@@ -38,9 +78,9 @@ Welcome to the **Aura AI Chat** monorepo! This workspace is orchestrated using `
    pnpm run demo
    ```
 
-## Publishing
+## 📦 Publishing
 
-This is what to do to publish `aura-ai-chat` to npm:
+This is what to do to publish `@aura-ai-labs/ai-chat` to npm:
 
 ```bash
 # 1. login to npm (one time only)
@@ -60,5 +100,5 @@ pnpm release
 
 After step 4, anyone can install it with:
 ```bash
-npm install aura-ai-chat
+npm install @aura-ai-labs/ai-chat
 ```

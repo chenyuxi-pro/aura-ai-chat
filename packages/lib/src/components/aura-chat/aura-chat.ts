@@ -369,9 +369,21 @@ export class AuraChat extends LitElement {
           >
             <md-icon>settings</md-icon>
           </button>
+          <button
+            class="header__btn"
+            @click=${this.handleCloseAuraChat}
+            aria-label="Close chat"
+            title="Close chat"
+          >
+            <md-icon>close</md-icon>
+          </button>
         </div>
       </div>
     `;
+  }
+
+  private handleCloseAuraChat(): void {
+    this.eventBus?.emit(AuraEventType.ChatClosed);
   }
 
   private renderTranscript(): TemplateResult {
