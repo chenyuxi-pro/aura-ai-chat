@@ -3,7 +3,7 @@
   <p><strong>A production-grade, framework-agnostic AI chat widget built as a Web Component.</strong></p>
   
   <!-- Add your badges here: -->
-  <!-- <img src="https://img.shields.io/npm/v/@aura-ai-labs/ai-chat?color=success&style=flat-square" alt="npm version" /> -->
+  <!-- <img src="https://img.shields.io/npm/v/aura-ai-chat?color=success&style=flat-square" alt="npm version" /> -->
 </div>
 
 ---
@@ -27,7 +27,7 @@ I set out with **5 core objectives**:
 
 *See how Aura AI Chat uses skills configured by the host application through progressive disclosure, invokes Human-in-the-Loop interventions, and natively logs all AI actions within the conversation history and a live event console.*
 
-https://github.com/user-attachments/assets/48650739-395c-487a-b62c-1bcd146401d5
+<video src="./docs/multi_skills.mp4" width="100%" controls autoplay loop muted></video>
 
 ## ⚡ Features
 
@@ -77,7 +77,7 @@ This monorepo is divided into the core library and several host framework demons
 
 ## 📦 Publishing
 
-This is what to do to publish `@aura-ai-labs/ai-chat` to npm:
+This is what to do to publish `aura-ai-chat` to npm:
 
 ```bash
 # 1. login to npm (one time only)
@@ -97,5 +97,5 @@ pnpm release
 
 After step 4, anyone can install it with:
 ```bash
-npm install @aura-ai-labs/ai-chat
+npm install aura-ai-chat
 ```
