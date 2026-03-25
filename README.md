@@ -10,7 +10,7 @@
 
 Welcome to the **Aura AI Chat** monorepo! This workspace is orchestrated using `pnpm` workspaces and `TurboRepo`. 
 
-Aura AI Chat allows you to easily drop a powerful, customizable AI assistant into any web application, regardless of the framework you choose.
+Aura AI Chat allows you to easily drop a powerful, customizable AI assistant into any web application, regardless of the framework or the AI provider you choose.
 
 ## 🎯 Why I built this?
 
@@ -25,12 +25,9 @@ I set out with **5 core objectives**:
 
 ## 🎥 See it in Action
 
-> **Tip:** You can drag and drop your `.mp4` or `.gif` video files directly into the GitHub editor to upload them and get a working URL! Replace the placeholder links below with your uploaded media URLs.
+*See how Aura AI Chat uses skills configured by the host application through progressive disclosure, invokes Human-in-the-Loop interventions, and natively logs all AI actions within the conversation history and a live event console.*
 
-**[ 🎬 INSERT YOUR DASHBOARD DEMO VIDEO HERE ]**
-<!-- Example: <video src="https://github.com/user-attachments/assets/..." width="100%"></video> -->
-
-**[ 🎬 INSERT YOUR HUMAN-IN-THE-LOOP APPROVAL VIDEO HERE ]**
+<video src="./docs/multi_skills.mp4" width="100%" controls autoplay loop muted></video>
 
 ## ⚡ Features
 

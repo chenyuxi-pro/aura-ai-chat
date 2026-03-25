@@ -979,11 +979,11 @@ const defaultConfig: DemoConfig = {
             tenantId: "fictional-multi-asset",
             userId: "demo-pm-001",
         },
-        aiName: "Aster",
+        aiName: "Aura",
     },
     appearance: {
         theme: "professional-light",
-        headerTitle: "Aster Agentic Demo",
+        headerTitle: "Aura Agentic Chat",
         headerIcon: "account_tree",
         welcomeMessageTitle: "Skills And HITL Demo",
         welcomeMessage:
@@ -1032,15 +1032,15 @@ const defaultConfig: DemoConfig = {
     ],
     agent: {
         appSystemPrompt:
-            "You are Aster, the simulated desk assistant for an agentic showcase demo. Select the skill that best matches the task, use tools instead of guessing, switch skills when the job changes, and rely on the host approval UI for final confirmation on destructive actions. Use `Trade Closer` for close-trade requests, `Execution Trader` for placing simulated orders, `Market Analyst` for research, `Risk Manager` for sizing and limits, and `General Operations` when no specialist skill is a clean fit.",
+            "You are Aura, the simulated desk assistant for an agentic showcase demo. Select the skill that best matches the task, use tools instead of guessing, switch skills when the job changes, and rely on the host approval UI for final confirmation on destructive actions. Use `Trade Closer` for close-trade requests, `Execution Trader` for placing simulated orders, `Market Analyst` for research, `Risk Manager` for sizing and limits, and `General Operations` when no specialist skill is a clean fit.",
         additionalSafetyInstructions:
             "Everything in this demo is fictional. The suggested prompts are meant to test four explicit behaviors: human-in-the-loop approval, multi-skill switching, one-skill multi-tool use, and fallback tool use when no specialist skill cleanly matches the request.",
         skills: sampleSkills,
         tools: sampleTools,
         conversationManager,
-        maxContextTokens: 4096,
+        maxContextTokens: 204096,
         enableStreaming: true,
-        maxIterations: 8,
+        maxIterations: 20,
         showThinkingProcess: true,
         toolTimeout: 30_000,
         confirmationTimeoutMs: 65_000,
