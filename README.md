@@ -27,7 +27,7 @@ I set out with **5 core objectives**:
 
 *See how Aura AI Chat uses skills configured by the host application through progressive disclosure, invokes Human-in-the-Loop interventions, and natively logs all AI actions within the conversation history and a live event console.*
 
-<video src="./docs/multi_skills.mp4" width="100%" controls autoplay loop muted></video>
+[<video src="./docs/multi_skills.mp4" width="100%" controls autoplay loop muted></video>](https://github.com/user-attachments/assets/48650739-395c-487a-b62c-1bcd146401d5)
 
 ## ⚡ Features
 
