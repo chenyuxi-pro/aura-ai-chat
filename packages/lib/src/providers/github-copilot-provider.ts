@@ -176,6 +176,7 @@ export class GitHubCopilotProvider extends BaseProvider {
   private copilotIndividualModelsUrl = "/github-copilot-individual-api/models";
   private rememberToken = true;
   private editorVersion = "vscode/1.85.1";
+  private defaultModel = "gpt-4o";
 
   private accessToken: string | null = null;
   private copilotToken: CopilotToken | null = null;
@@ -440,7 +441,7 @@ export class GitHubCopilotProvider extends BaseProvider {
       },
       body: JSON.stringify({
         messages: toCopilotMessages(request.messages),
-        model: request.modelId,
+        model: request.modelId || this.defaultModel,
         tools: toCopilotTools(request.tools),
         tool_choice: request.tools?.length ? "auto" : undefined,
         stream: false,
@@ -484,7 +485,7 @@ export class GitHubCopilotProvider extends BaseProvider {
       },
       body: JSON.stringify({
         messages: toCopilotMessages(request.messages),
-        model: request.modelId,
+        model: request.modelId || this.defaultModel,
         tools: toCopilotTools(request.tools),
         tool_choice: request.tools?.length ? "auto" : undefined,
         stream: true,

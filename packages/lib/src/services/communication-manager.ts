@@ -255,7 +255,7 @@ export class CommunicationManager {
   async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
-    const { skillManager, toolRunner, historyManager, eventBus, config } = this;
+    const { historyManager, eventBus, config } = this;
     const maxIter = config.agent?.maxIterations ?? 10;
     const loopStart = Date.now();
 
@@ -263,396 +263,376 @@ export class CommunicationManager {
     await historyManager.pushAndPersistMessage(userMsg);
     eventBus.emit(AuraEventType.MessageSent, { message: userMsg });
     this.callbacks.onMessagePushed();
-
     eventBus.emit(AuraEventType.AgentLoopStarted, {
       conversationId: historyManager.getConversation().id,
     });
 
     for (let iteration = 1; iteration <= maxIter; iteration++) {
       this.checkAborted(signal);
+      await this.beginIteration(iteration);
 
-      const iterMsg = createIterationMessage(iteration);
-      this.currentIterationMsg = iterMsg;
-      historyManager.pushMessage(iterMsg);
-      this.callbacks.onMessagePushed();
-      eventBus.emit(AuraEventType.Debug, {
-        message: "Starting agent iteration",
-        iteration,
-        activeSkill: this.activeSkill?.name ?? null,
-        conversationId: historyManager.getConversation().id,
-      });
-
-      const resources = config.agent?.resources;
-      const resourceContents = await readResources(resources);
-
-      const { tools, systemPromptArgs } =
-        this.resolveToolSet(resourceContents);
-
-      const systemPrompt = buildSystemPrompt({
-        ...systemPromptArgs,
-        agenticMode: true,
-      });
-
-      const providerMessages = this.buildProviderMessages(systemPrompt);
-      const trimmed = config.agent?.maxContextTokens
-        ? trimToTokenBudget(providerMessages, {
-          maxTokens: config.agent.maxContextTokens,
-        })
-        : providerMessages;
-
-      const thinkStep = await this.emitStep(
-        iteration,
-        "thinking",
-        "Reasoning...",
-      );
-      let response: ProviderResponse;
-      try {
-        response = await this.callProvider(trimmed, tools, signal);
-      } catch (err) {
-        if (thinkStep) await this.failStep(thinkStep, String(err));
-        throw err;
-      }
-      if (thinkStep) await this.completeStep(thinkStep);
+      const response = await this.thinkAndRespond(iteration, signal);
+      if (!response) break;
 
       if (response.toolCalls.length === 0) {
-        const assistantMsg = createAssistantMessage(response.content);
-        await historyManager.pushAndPersistMessage(assistantMsg);
-        eventBus.emit(AuraEventType.MessageReceived, {
-          message: assistantMsg,
-        });
-        this.callbacks.onMessagePushed();
-        eventBus.emit(AuraEventType.AgentLoopCompleted, {
-          conversationId: historyManager.getConversation().id,
-          stats: {
-            iterations: iteration,
-            durationMs: Date.now() - loopStart,
-          },
-        });
+        await this.finishWithTextReply(response, iteration, loopStart);
         return;
       }
 
-      const assistantMsg = createAssistantMessageWithToolCalls(response);
-      await historyManager.pushAndPersistMessage(assistantMsg);
-      this.callbacks.onMessagePushed();
+      const shouldContinue = await this.processToolCalls(
+        response,
+        iteration,
+        signal,
+      );
 
-      let shouldContinue = true;
-      for (const toolCall of response.toolCalls) {
-        this.checkAborted(signal);
-
-        if (
-          toolCall.id === SKILL_SELECT_TOOL_NAME ||
-          toolCall.id === SKILL_SWITCH_TOOL_NAME
-        ) {
-          const toolArgs = toolCall.arguments as Record<string, unknown>;
-          const skillName = String(
-            toolArgs.skillName ?? toolArgs.skill_name ?? "none",
-          );
-          this.activeSkill =
-            skillName === "none"
-              ? null
-              : (skillManager.getSkill(skillName) ?? null);
-          eventBus.emit(AuraEventType.SkillSelected, {
-            skillName: skillName === "none" ? null : skillName,
-          });
-          const step = await this.emitStep(
-            iteration,
-            "skill-select",
-            `Selected skill "${skillName}"`,
-          );
-          await this.completeStep(step);
-
-          const resultMsg = createToolResultMessage(
-            toolCall,
-            `Skill "${skillName}" activated.`,
-          );
-          await historyManager.pushAndPersistMessage(resultMsg);
-          this.callbacks.onMessagePushed();
-          continue;
-        }
-
-        if (toolCall.id === ASK_USER_TOOL_NAME) {
-          const question = extractAskUserQuestion(
-            toolCall.arguments as Record<string, unknown>,
-          );
-          let askStep: AgentStep | null = null;
-          askStep = await this.emitStep(
-            iteration,
-            "ask-user",
-            question,
-            toolCall,
-          );
-          await this.updateStep(askStep, {
-            status: "waiting",
-            userInputQuestion: question,
-          });
-
-          const hitlResult = askStep
-            ? await this.callbacks.requestHumanInTheLoop(askStep)
-            : { text: "" };
-
-          if (hitlResult.timedOut) {
-            if (askStep) {
-              askStep.status = "timed-out";
-              askStep.summary = "Timed out waiting for user response";
-              askStep.durationMs = Date.now() - askStep.timestamp;
-              await this.updateIterationMessage(askStep);
-              this.callbacks.onStepUpdate({ ...askStep });
-              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
-                step: { ...askStep },
-              });
-            }
-            const timeoutMsg = createToolResultMessage(
-              toolCall,
-              JSON.stringify({
-                timedOut: true,
-                message:
-                  "The request timed out while waiting for user input. " +
-                  "Please try again when you are back.",
-              }),
-            );
-            await historyManager.pushAndPersistMessage(timeoutMsg);
-            this.callbacks.onMessagePushed();
-
-            shouldContinue = false;
-            break;
-          }
-
-          const answer = hitlResult.text ?? "";
-          if (askStep) {
-            await this.completeStep(askStep, answer);
-            const userId =
-              config.identity.appMetadata?.userId ?? "unknown";
-            const timestamp = new Date().toLocaleString();
-            await this.updateStep(askStep, {
-              summary: `User ${userId} replied at ${timestamp}`,
-            });
-          }
-
-          const toolResultMsg = createToolResultMessage(toolCall, answer);
-          await historyManager.pushAndPersistMessage(toolResultMsg);
-          this.callbacks.onMessagePushed();
-          continue;
-        }
-
-        const tool = skillManager.getTool(toolCall.id);
-        if (!tool) {
-          eventBus.emit(AuraEventType.ToolError, {
-            tool: toolCall.id,
-            toolId: toolCall.id,
-            callId: toolCall.callId,
-            error: `Tool "${toolCall.id}" is not registered.`,
-          });
-          const errorResult = createToolResultMessage(
-            toolCall,
-            JSON.stringify({
-              error: `Tool "${toolCall.id}" is not registered.`,
-            }),
-          );
-          await historyManager.pushAndPersistMessage(errorResult);
-          this.callbacks.onMessagePushed();
-          continue;
-        }
-
-        const toolStep = await this.emitStep(
-          iteration,
-          "tool-call",
-          `Calling ${tool.name}...`,
-          toolCall,
-        );
-
-        if (needsConfirmation(tool)) {
-          const pendingAction = await buildPendingAction(tool, toolCall);
-          if (toolStep) {
-            await this.updateStep(toolStep, {
-              status: "waiting",
-              type: "approval",
-              summary: `Awaiting approval for ${tool.name}`,
-              pendingAction,
-            });
-          }
-
-          const hitlResult = toolStep
-            ? await this.callbacks.requestHumanInTheLoop(toolStep)
-            : { approved: true };
-
-          if (hitlResult.timedOut) {
-            if (toolStep?.pendingAction) {
-              toolStep.pendingAction = {
-                ...toolStep.pendingAction,
-                status: "timed-out",
-              };
-            }
-            if (toolStep) {
-              toolStep.status = "timed-out";
-              toolStep.summary = `Timed out waiting for approval of ${tool.name}`;
-              toolStep.durationMs = Date.now() - toolStep.timestamp;
-              await this.updateIterationMessage(toolStep);
-              this.callbacks.onStepUpdate({ ...toolStep });
-              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
-                step: { ...toolStep },
-              });
-            }
-            const timeoutResult = createToolResultMessage(
-              toolCall,
-              JSON.stringify({
-                timedOut: true,
-                message: `Confirmation for "${tool.name}" timed out. Please try again when you are back.`,
-              }),
-            );
-            await historyManager.pushAndPersistMessage(timeoutResult);
-            this.callbacks.onMessagePushed();
-            shouldContinue = false;
-            break;
-          }
-
-          const approved = hitlResult.approved ?? true;
-
-          if (toolStep?.pendingAction) {
-            toolStep.pendingAction = {
-              ...toolStep.pendingAction,
-              status: approved ? "executing" : "rejected",
-            };
-          }
-
-          if (!approved) {
-            const rejResult = createToolResultMessage(
-              toolCall,
-              JSON.stringify({
-                rejected: true,
-                message: `User rejected "${tool.name}".`,
-              }),
-            );
-            await historyManager.pushAndPersistMessage(rejResult);
-            this.callbacks.onMessagePushed();
-            if (toolStep) {
-              const userId =
-                config.identity.appMetadata?.userId ?? "unknown";
-              const timestamp = new Date().toLocaleString();
-              toolStep.status = "rejected";
-              toolStep.summary = `Skip ${tool.name} - rejected by ${userId} at ${timestamp}`;
-              toolStep.durationMs = Date.now() - toolStep.timestamp;
-              toolStep.detail = `User "${userId}" rejected "${tool.name}" at ${timestamp}`;
-              await this.updateIterationMessage(toolStep);
-              this.callbacks.onStepUpdate({ ...toolStep });
-              this.eventBus.emit(AuraEventType.AgentStepCompleted, {
-                step: { ...toolStep },
-              });
-            }
-            continue;
-          }
-        }
-
-        if (toolStep) {
-          const userId = config.identity.appMetadata?.userId ?? "unknown";
-          const timestamp = new Date().toLocaleString();
-          await this.updateStep(toolStep, {
-            status: "running",
-            summary: `Executing ${tool.name} - approved by ${userId} at ${timestamp}`,
-          });
-        }
-
-        const ctx = buildToolContext(config, historyManager, resources);
-        eventBus.emit(AuraEventType.ToolStart, {
-          tool: tool.name,
-          toolId: toolCall.id,
-          callId: toolCall.callId,
-          arguments: toolCall.arguments,
-          conversationId: ctx.conversationId,
-        });
-        const result = await toolRunner.execute(toolCall, ctx);
-        eventBus.emit(AuraEventType.ToolCalled, {
-          tool: tool.name,
-          toolId: toolCall.id,
-          callId: toolCall.callId,
-          entry: result.logEntry,
-        });
-        if (!result.logEntry?.error) {
-          eventBus.emit(AuraEventType.ToolSuccess, {
-            tool: tool.name,
-            toolId: toolCall.id,
-            callId: toolCall.callId,
-            entry: result.logEntry,
-            result: result.content,
-          });
-        } else {
-          eventBus.emit(AuraEventType.ToolError, {
-            tool: tool.name,
-            toolId: toolCall.id,
-            callId: toolCall.callId,
-            entry: result.logEntry,
-            error: result.logEntry.error,
-          });
-        }
-
-        if (toolStep) {
-          if (!result.logEntry?.error) {
-            const userId =
-              config.identity.appMetadata?.userId ?? "unknown";
-            const approvedAt = toolStep.pendingAction
-              ? ` - approved by ${userId} at ${new Date().toLocaleString()}`
-              : "";
-            await this.updateStep(toolStep, {
-              summary: `Executed ${tool.name}${approvedAt}`,
-            });
-          } else {
-            await this.failStep(
-              toolStep,
-              `Error: ${String(result.logEntry?.error ?? "Unknown error")}`,
-            );
-          }
-        }
-
-        const modelText = contentToModelText(result.content);
-        const toolResultMsg = createToolResultMessage(
-          toolCall,
-          modelText,
-          result.content,
-        );
-        await historyManager.pushAndPersistMessage(toolResultMsg);
-        this.callbacks.onMessagePushed();
-        if (toolStep && !result.logEntry?.error) {
-          await this.completeStep(toolStep, modelText);
-        }
-      }
-
+      await this.finalizeIteration();
       if (!shouldContinue) {
-        if (this.currentIterationMsg) {
-          await this.historyManager.persistExistingMessage(
-            this.currentIterationMsg.id,
-          );
-        }
-        this.currentIterationMsg = null;
-        const timeoutMsg = createAssistantMessage(
-          "This action was cancelled as no response was received in time. " +
-          "Please try again when you're ready.",
-        );
-        await historyManager.pushAndPersistMessage(timeoutMsg);
-        eventBus.emit(AuraEventType.MessageReceived, {
-          message: timeoutMsg,
-        });
-        this.callbacks.onMessagePushed();
-        eventBus.emit(AuraEventType.AgentLoopCompleted, {
-          conversationId: historyManager.getConversation().id,
-          stats: {
-            iterations: iteration,
-            durationMs: Date.now() - loopStart,
-          },
-        });
+        await this.finishWithTimeout(iteration, loopStart);
         return;
       }
-
-      if (this.currentIterationMsg) {
-        await this.historyManager.persistExistingMessage(
-          this.currentIterationMsg.id,
-        );
-      }
-      this.currentIterationMsg = null;
     }
 
+    await this.finishWithIterationLimit(maxIter, loopStart);
+  }
+
+  private async beginIteration(iteration: number): Promise<void> {
+    const { historyManager, eventBus } = this;
+    const iterMsg = createIterationMessage(iteration);
+    this.currentIterationMsg = iterMsg;
+    historyManager.pushMessage(iterMsg);
+    this.callbacks.onMessagePushed();
+    eventBus.emit(AuraEventType.Debug, {
+      message: "Starting agent iteration",
+      iteration,
+      activeSkill: this.activeSkill?.name ?? null,
+      conversationId: historyManager.getConversation().id,
+    });
+  }
+
+  private async thinkAndRespond(
+    iteration: number,
+    signal: AbortSignal,
+  ): Promise<ProviderResponse | null> {
+    const { config } = this;
+    const resources = config.agent?.resources;
+    const resourceContents = await readResources(resources);
+
+    const { tools, systemPromptArgs } = this.resolveToolSet(resourceContents);
+    const systemPrompt = buildSystemPrompt({ ...systemPromptArgs, agenticMode: true });
+    const providerMessages = this.buildProviderMessages(systemPrompt);
+    const trimmed = config.agent?.maxContextTokens
+      ? trimToTokenBudget(providerMessages, { maxTokens: config.agent.maxContextTokens })
+      : providerMessages;
+
+    const thinkStep = await this.emitStep(iteration, "thinking", "Reasoning...");
+    try {
+      const response = await this.callProvider(trimmed, tools, signal);
+      if (thinkStep) await this.completeStep(thinkStep);
+      return response;
+    } catch (err) {
+      if (thinkStep) await this.failStep(thinkStep, String(err));
+      throw err;
+    }
+  }
+
+  private async processToolCalls(
+    response: ProviderResponse,
+    iteration: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const { historyManager } = this;
+    const assistantMsg = createAssistantMessageWithToolCalls(response);
+    await historyManager.pushAndPersistMessage(assistantMsg);
+    this.callbacks.onMessagePushed();
+
+    for (const toolCall of response.toolCalls) {
+      this.checkAborted(signal);
+
+      if (toolCall.id === SKILL_SELECT_TOOL_NAME || toolCall.id === SKILL_SWITCH_TOOL_NAME) {
+        await this.handleSkillSwitch(toolCall, iteration);
+        continue;
+      }
+
+      if (toolCall.id === ASK_USER_TOOL_NAME) {
+        const timedOut = await this.handleAskUser(toolCall, iteration);
+        if (timedOut) return false;
+        continue;
+      }
+
+      const timedOut = await this.handleToolCall(toolCall, iteration);
+      if (timedOut) return false;
+    }
+
+    return true;
+  }
+
+  private async handleSkillSwitch(
+    toolCall: ToolCallRequest,
+    iteration: number,
+  ): Promise<void> {
+    const { skillManager, historyManager, eventBus } = this;
+    const toolArgs = toolCall.arguments as Record<string, unknown>;
+    const skillName = String(toolArgs.skillName ?? toolArgs.skill_name ?? "none");
+
+    this.activeSkill = skillName === "none"
+      ? null
+      : (skillManager.getSkill(skillName) ?? null);
+
+    eventBus.emit(AuraEventType.SkillSelected, {
+      skillName: skillName === "none" ? null : skillName,
+    });
+
+    const step = await this.emitStep(iteration, "skill-select", `Selected skill "${skillName}"`);
+    await this.completeStep(step);
+
+    const resultMsg = createToolResultMessage(toolCall, `Skill "${skillName}" activated.`);
+    await historyManager.pushAndPersistMessage(resultMsg);
+    this.callbacks.onMessagePushed();
+  }
+
+  private async handleAskUser(
+    toolCall: ToolCallRequest,
+    iteration: number,
+  ): Promise<boolean> {
+    const { historyManager, config } = this;
+    const question = extractAskUserQuestion(toolCall.arguments as Record<string, unknown>);
+
+    const askStep = await this.emitStep(iteration, "ask-user", question, toolCall);
+    await this.updateStep(askStep, { status: "waiting", userInputQuestion: question });
+
+    const hitlResult = await this.callbacks.requestHumanInTheLoop(askStep);
+
+    if (hitlResult.timedOut) {
+      askStep.status = "timed-out";
+      askStep.summary = "Timed out waiting for user response";
+      askStep.durationMs = Date.now() - askStep.timestamp;
+      await this.updateIterationMessage(askStep);
+      this.callbacks.onStepUpdate({ ...askStep });
+      this.eventBus.emit(AuraEventType.AgentStepCompleted, { step: { ...askStep } });
+
+      const timeoutMsg = createToolResultMessage(toolCall, JSON.stringify({
+        timedOut: true,
+        message: "The request timed out while waiting for user input. Please try again when you are back.",
+      }));
+      await historyManager.pushAndPersistMessage(timeoutMsg);
+      this.callbacks.onMessagePushed();
+      return true;
+    }
+
+    const answer = hitlResult.text ?? "";
+    await this.completeStep(askStep, answer);
+    const userId = config.identity.appMetadata?.userId ?? "unknown";
+    await this.updateStep(askStep, {
+      summary: `User ${userId} replied at ${new Date().toLocaleString()}`,
+    });
+
+    const toolResultMsg = createToolResultMessage(toolCall, answer);
+    await historyManager.pushAndPersistMessage(toolResultMsg);
+    this.callbacks.onMessagePushed();
+    return false;
+  }
+
+  private async handleToolCall(
+    toolCall: ToolCallRequest,
+    iteration: number,
+  ): Promise<boolean> {
+    const { skillManager, historyManager, eventBus, config } = this;
+    const resources = config.agent?.resources;
+
+    const tool = skillManager.getTool(toolCall.id);
+    if (!tool) {
+      eventBus.emit(AuraEventType.ToolError, {
+        tool: toolCall.id, toolId: toolCall.id, callId: toolCall.callId,
+        error: `Tool "${toolCall.id}" is not registered.`,
+      });
+      const errorResult = createToolResultMessage(
+        toolCall,
+        JSON.stringify({ error: `Tool "${toolCall.id}" is not registered.` }),
+      );
+      await historyManager.pushAndPersistMessage(errorResult);
+      this.callbacks.onMessagePushed();
+      return false;
+    }
+
+    const toolStep = await this.emitStep(iteration, "tool-call", `Calling ${tool.name}...`, toolCall);
+
+    if (needsConfirmation(tool)) {
+      const timedOut = await this.requestToolApproval(tool, toolCall, toolStep);
+      if (timedOut) return true;
+      const hitlResult = await this.callbacks.requestHumanInTheLoop(toolStep);
+      if (hitlResult.timedOut) {
+        await this.handleToolApprovalTimeout(tool, toolCall, toolStep);
+        return true;
+      }
+      const approved = hitlResult.approved ?? true;
+      if (toolStep?.pendingAction) {
+        toolStep.pendingAction = { ...toolStep.pendingAction, status: approved ? "executing" : "rejected" };
+      }
+      if (!approved) {
+        await this.handleToolRejected(tool, toolCall, toolStep);
+        return false;
+      }
+    }
+
+    await this.executeToolCall(tool, toolCall, toolStep, resources);
+    return false;
+  }
+
+  private async requestToolApproval(
+    tool: AuraTool,
+    toolCall: ToolCallRequest,
+    toolStep: AgentStep,
+  ): Promise<boolean> {
+    const pendingAction = await buildPendingAction(tool, toolCall);
+    await this.updateStep(toolStep, {
+      status: "waiting",
+      type: "approval",
+      summary: `Awaiting approval for ${tool.name}`,
+      pendingAction,
+    });
+    return false;
+  }
+
+  private async handleToolApprovalTimeout(
+    tool: AuraTool,
+    toolCall: ToolCallRequest,
+    toolStep: AgentStep,
+  ): Promise<void> {
+    const { historyManager } = this;
+    if (toolStep?.pendingAction) {
+      toolStep.pendingAction = { ...toolStep.pendingAction, status: "timed-out" };
+    }
+    toolStep.status = "timed-out";
+    toolStep.summary = `Timed out waiting for approval of ${tool.name}`;
+    toolStep.durationMs = Date.now() - toolStep.timestamp;
+    await this.updateIterationMessage(toolStep);
+    this.callbacks.onStepUpdate({ ...toolStep });
+    this.eventBus.emit(AuraEventType.AgentStepCompleted, { step: { ...toolStep } });
+
+    const timeoutResult = createToolResultMessage(toolCall, JSON.stringify({
+      timedOut: true,
+      message: `Confirmation for "${tool.name}" timed out. Please try again when you are back.`,
+    }));
+    await historyManager.pushAndPersistMessage(timeoutResult);
+    this.callbacks.onMessagePushed();
+  }
+
+  private async handleToolRejected(
+    tool: AuraTool,
+    toolCall: ToolCallRequest,
+    toolStep: AgentStep,
+  ): Promise<void> {
+    const { historyManager, config } = this;
+    const rejResult = createToolResultMessage(
+      toolCall,
+      JSON.stringify({ rejected: true, message: `User rejected "${tool.name}".` }),
+    );
+    await historyManager.pushAndPersistMessage(rejResult);
+    this.callbacks.onMessagePushed();
+
+    const userId = config.identity.appMetadata?.userId ?? "unknown";
+    const timestamp = new Date().toLocaleString();
+    toolStep.status = "rejected";
+    toolStep.summary = `Skip ${tool.name} - rejected by ${userId} at ${timestamp}`;
+    toolStep.durationMs = Date.now() - toolStep.timestamp;
+    toolStep.detail = `User "${userId}" rejected "${tool.name}" at ${timestamp}`;
+    await this.updateIterationMessage(toolStep);
+    this.callbacks.onStepUpdate({ ...toolStep });
+    this.eventBus.emit(AuraEventType.AgentStepCompleted, { step: { ...toolStep } });
+  }
+
+  private async executeToolCall(
+    tool: AuraTool,
+    toolCall: ToolCallRequest,
+    toolStep: AgentStep,
+    resources: AuraResource[] | undefined,
+  ): Promise<void> {
+    const { toolRunner, historyManager, eventBus, config } = this;
+    const userId = config.identity.appMetadata?.userId ?? "unknown";
+
+    await this.updateStep(toolStep, {
+      status: "running",
+      summary: `Executing ${tool.name} - approved by ${userId} at ${new Date().toLocaleString()}`,
+    });
+
+    const ctx = buildToolContext(config, historyManager, resources);
+    eventBus.emit(AuraEventType.ToolStart, {
+      tool: tool.name, toolId: toolCall.id, callId: toolCall.callId,
+      arguments: toolCall.arguments, conversationId: ctx.conversationId,
+    });
+
+    const result = await toolRunner.execute(toolCall, ctx);
+    eventBus.emit(AuraEventType.ToolCalled, {
+      tool: tool.name, toolId: toolCall.id, callId: toolCall.callId, entry: result.logEntry,
+    });
+
+    if (!result.logEntry?.error) {
+      eventBus.emit(AuraEventType.ToolSuccess, {
+        tool: tool.name, toolId: toolCall.id, callId: toolCall.callId,
+        entry: result.logEntry, result: result.content,
+      });
+      const approvedAt = toolStep.pendingAction
+        ? ` - approved by ${userId} at ${new Date().toLocaleString()}`
+        : "";
+      await this.updateStep(toolStep, { summary: `Executed ${tool.name}${approvedAt}` });
+    } else {
+      eventBus.emit(AuraEventType.ToolError, {
+        tool: tool.name, toolId: toolCall.id, callId: toolCall.callId,
+        entry: result.logEntry, error: result.logEntry.error,
+      });
+      await this.failStep(toolStep, `Error: ${String(result.logEntry?.error ?? "Unknown error")}`);
+    }
+
+    const modelText = contentToModelText(result.content);
+    const toolResultMsg = createToolResultMessage(toolCall, modelText, result.content);
+    await historyManager.pushAndPersistMessage(toolResultMsg);
+    this.callbacks.onMessagePushed();
+    if (!result.logEntry?.error) await this.completeStep(toolStep, modelText);
+  }
+
+  private async finalizeIteration(): Promise<void> {
+    if (this.currentIterationMsg) {
+      await this.historyManager.persistExistingMessage(this.currentIterationMsg.id);
+    }
+    this.currentIterationMsg = null;
+  }
+
+  private async finishWithTextReply(
+    response: ProviderResponse,
+    iteration: number,
+    loopStart: number,
+  ): Promise<void> {
+    const { historyManager, eventBus } = this;
+    const assistantMsg = createAssistantMessage(response.content);
+    await historyManager.pushAndPersistMessage(assistantMsg);
+    eventBus.emit(AuraEventType.MessageReceived, { message: assistantMsg });
+    this.callbacks.onMessagePushed();
+    eventBus.emit(AuraEventType.AgentLoopCompleted, {
+      conversationId: historyManager.getConversation().id,
+      stats: { iterations: iteration, durationMs: Date.now() - loopStart },
+    });
+  }
+
+  private async finishWithTimeout(iteration: number, loopStart: number): Promise<void> {
+    const { historyManager, eventBus } = this;
+    await this.finalizeIteration();
+    const timeoutMsg = createAssistantMessage(
+      "This action was cancelled as no response was received in time. Please try again when you're ready.",
+    );
+    await historyManager.pushAndPersistMessage(timeoutMsg);
+    eventBus.emit(AuraEventType.MessageReceived, { message: timeoutMsg });
+    this.callbacks.onMessagePushed();
+    eventBus.emit(AuraEventType.AgentLoopCompleted, {
+      conversationId: historyManager.getConversation().id,
+      stats: { iterations: iteration, durationMs: Date.now() - loopStart },
+    });
+  }
+
+  private async finishWithIterationLimit(maxIter: number, loopStart: number): Promise<void> {
+    const { historyManager, eventBus } = this;
     const limitMsg = createAssistantMessage(
       "I've reached the maximum number of reasoning steps. " +
-      "Here's what I've accomplished so far - please let me know " +
-      "if you'd like me to continue.",
+      "Here's what I've accomplished so far - please let me know if you'd like me to continue.",
     );
     await historyManager.pushAndPersistMessage(limitMsg);
     eventBus.emit(AuraEventType.MessageReceived, { message: limitMsg });
